@@ -1,7 +1,7 @@
 import { getDb, ensureTables } from '../../db';
 import { NextResponse } from 'next/server';
 
-const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1exqw96PYtGnta0BC4bwGkumSIvZAkpMJQ5iI--ucuTY/export?format=csv&gid=0';
+const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQYVapvyoREErPS7Y_sVrObT3cfIrUCojg1GdX5FjGHaYJne8wr4YkYOfPLWDpSbJxqwWZAKu1qwQ5-/pub?output=csv';
 
 function parseCSVLine(line) {
   const result = [];
