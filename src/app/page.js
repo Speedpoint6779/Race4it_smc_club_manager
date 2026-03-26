@@ -24,6 +24,7 @@ const Icons = {
   Ext: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>,
   Cal: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>,
   Gear: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
+  Refresh: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>,
 };
 
 const SAMPLE_MEMBERS = [
@@ -203,39 +204,6 @@ const SAMPLE_MEMBERS = [
   { id:"174",firstName:"Hubert",lastName:"Yepko",email:"(no email on file)",phone:"",address1:"",address2:"",city:"",state:"",zip:"",status:"active",joinDate:"2026-01-01",lastDuesPaid:"",notes:"" }
 ];
 
-const INIT_SPEAKERS = [
-  { id:"s1",date:"2026-02-06",speaker:"Eduardo Bellini",org:"US Navy",title:"Pilot",topic:"Life as a Navy Pilot",recruitedBy:"Tom Jones",recruiterPhone:"910-632-9631",noMeeting:false,reason:"" },
-  { id:"s2",date:"2026-02-13",speaker:"Ed McMahon",org:"New Hanover County",title:"Sheriff",topic:"Annual Update",recruitedBy:"Tom Jones",recruiterPhone:"910-632-9631",noMeeting:false,reason:"" },
-  { id:"s3",date:"2026-02-20",speaker:"Dan Hickman",org:"Palm Wars Production",title:"Senior Producer",topic:"The Air Cavalry Troop in Vietnam",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s4",date:"2026-02-27",speaker:"Thomas Conant",org:"U.S. Marine Corp",title:"Deputy Commander, PACOM",topic:"The China-Taiwan Problem",recruitedBy:"Tom Jones",recruiterPhone:"910-632-9631",noMeeting:false,reason:"" },
-  { id:"s5",date:"2026-03-06",speaker:"George Taylor Jr.",org:"SMC Member",title:"N/A",topic:"Artificial Intelligence",recruitedBy:"Tom Jones",recruiterPhone:"910-632-9631",noMeeting:false,reason:"" },
-  { id:"s6",date:"2026-03-13",speaker:"Bill Saffo",org:"City of Wilmington",title:"Mayor",topic:"Annual Update",recruitedBy:"Tom Jones",recruiterPhone:"910-632-9631",noMeeting:false,reason:"" },
-  { id:"s7",date:"2026-03-20",speaker:"TBD",org:"Step Up Wilmington",title:"N/A",topic:"The Program's Impact",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s8",date:"2026-03-27",speaker:"Meagan Verde",org:"Good Shepherd Center",title:"Sr. Director of Development",topic:"The Program's Impact",recruitedBy:"George Taylor, Jr",recruiterPhone:"910-616-8537",noMeeting:false,reason:"" },
-  { id:"s9",date:"2026-04-03",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:true,reason:"GOOD FRIDAY" },
-  { id:"s10",date:"2026-04-10",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s11",date:"2026-04-17",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s12",date:"2026-04-24",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s13",date:"2026-05-01",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s14",date:"2026-05-08",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s15",date:"2026-05-15",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s16",date:"2026-05-22",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:true,reason:"MEMORIAL DAY" },
-  { id:"s17",date:"2026-05-29",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s18",date:"2026-06-05",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s19",date:"2026-06-12",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s20",date:"2026-06-19",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:true,reason:"JUNETEENTH" },
-  { id:"s21",date:"2026-06-26",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s22",date:"2026-07-03",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s23",date:"2026-07-10",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s24",date:"2026-07-17",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s25",date:"2026-07-24",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s26",date:"2026-07-31",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:false,reason:"" },
-  { id:"s27",date:"2026-08-07",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:true,reason:"VACATION" },
-  { id:"s28",date:"2026-08-14",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:true,reason:"VACATION" },
-  { id:"s29",date:"2026-08-21",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:true,reason:"VACATION" },
-  { id:"s30",date:"2026-08-28",speaker:"",org:"",title:"",topic:"",recruitedBy:"",recruiterPhone:"",noMeeting:true,reason:"VACATION" },
-];
-
 const fmtDate = d => { if(!d) return ""; const [y,m,day]=d.split("-"); return m+"/"+day+"/"+y.slice(2); };
 
 function getDuesStatus(m) {
@@ -373,14 +341,20 @@ function GridHeader({cols}){return <div style={{display:"grid",gridTemplateColum
 
 export default function App(){
   const[user,setUser]=useState(null);const[un,setUn]=useState("");const[pw,setPw]=useState("");const[le,setLe]=useState("");
-  const[pg,setPg]=useState("dashboard");const[members,setMembers]=useState([]);const[speakers,setSpeakers]=useState(INIT_SPEAKERS);
+  const[pg,setPg]=useState("dashboard");const[members,setMembers]=useState([]);const[speakers,setSpeakers]=useState([]);
   const[loading,setLoading]=useState(true);
+  const[syncing,setSyncing]=useState(false);
   useEffect(()=>{
     fetch("/api/members").then(r=>r.json()).then(data=>{
       if(Array.isArray(data)&&data.length>0){setMembers(data);setLoading(false)}
       else{fetch("/api/seed").then(r=>r.json()).then(()=>fetch("/api/members").then(r=>r.json()).then(d=>{if(Array.isArray(d))setMembers(d);setLoading(false)})).catch(()=>setLoading(false))}
     }).catch(()=>setLoading(false));
     fetch("/api/users").then(r=>r.json()).then(d=>{if(Array.isArray(d))setAppUsers(d)}).catch(()=>{});
+    // Fetch speakers from DB, auto-sync from sheet if empty
+    fetch("/api/speakers").then(r=>r.json()).then(data=>{
+      if(Array.isArray(data)&&data.length>0){setSpeakers(data)}
+      else{fetch("/api/speakers/sync",{method:"POST"}).then(r=>r.json()).then(()=>fetch("/api/speakers").then(r=>r.json()).then(d=>{if(Array.isArray(d))setSpeakers(d)})).catch(()=>{})}
+    }).catch(()=>{});
   },[]);
   const[search,setSearch]=useState("");const[filter,setFilter]=useState("all");const[mViewSize,setMViewSize]=useState(20);
   const[showMM,setShowMM]=useState(false);const[editM,setEditM]=useState(null);const[viewM,setViewM]=useState(null);
@@ -415,8 +389,9 @@ export default function App(){
   const ac=mwd.filter(m=>m.status==="active").length,pc=mwd.filter(m=>m._ds==="paid"&&m.status==="active").length,oc=mwd.filter(m=>m._ds==="overdue").length;
   const saveM=async(m)=>{const isEdit=members.find(x=>x.id===m.id);if(isEdit){await fetch("/api/members",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(m)});setMembers(p=>p.map(x=>x.id===m.id?m:x))}else{const r=await fetch("/api/members",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(m)});const d=await r.json();setMembers(p=>[...p,{...m,id:d.id}])}setShowMM(false);setEditM(null);flash(isEdit?"Member updated":"Member added")};
   const delM=async(id)=>{await fetch("/api/members",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})});setMembers(p=>p.filter(m=>m.id!==id));setConfDel(null);flash("Member removed")};
-  const saveS=s=>{setSpeakers(p=>{const e=p.find(x=>x.id===s.id);if(e)return p.map(x=>x.id===s.id?s:x);return[...p,s].sort((a,b)=>a.date.localeCompare(b.date))});setShowSM(false);setEditS(null);flash(editS?"Speaker updated":"Speaker added")};
-  const delS=id=>{setSpeakers(p=>p.filter(s=>s.id!==id));setConfDelS(null);flash("Speaker removed")};
+  const saveS=async(s)=>{const isEdit=speakers.find(x=>x.id===s.id);if(isEdit){await fetch("/api/speakers",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(s)});setSpeakers(p=>p.map(x=>x.id===s.id?s:x))}else{const r=await fetch("/api/speakers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(s)});const d=await r.json();setSpeakers(p=>[...p,{...s,id:d.id||s.id}].sort((a,b)=>a.date.localeCompare(b.date)))}setShowSM(false);setEditS(null);flash(isEdit?"Speaker updated":"Speaker added")};
+  const delS=async(id)=>{await fetch("/api/speakers",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})});setSpeakers(p=>p.filter(s=>s.id!==id));setConfDelS(null);flash("Speaker removed")};
+  const syncFromSheet=async()=>{setSyncing(true);try{await fetch("/api/speakers/sync",{method:"POST"});const r=await fetch("/api/speakers");const d=await r.json();if(Array.isArray(d))setSpeakers(d);flash("Speakers synced from Google Sheet")}catch(e){flash("Sync failed")}finally{setSyncing(false)}};
   const saveU=async(u)=>{const isEdit=appUsers.find(x=>x.id===u.id);if(isEdit){const r=await fetch("/api/users",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(u)});if(!r.ok){const d=await r.json();flash(d.error||"Error");return}setAppUsers(p=>p.map(x=>x.id===u.id?{...x,name:u.name,username:u.username}:x))}else{const r=await fetch("/api/users",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(u)});const d=await r.json();if(!r.ok){flash(d.error||"Error");return}setAppUsers(p=>[...p,{id:d.id,name:u.name,username:u.username,createdAt:new Date().toISOString().split("T")[0]}])}setShowUM(false);setEditU(null);flash(isEdit?"User updated":"User added")};
   const delU=async(id)=>{const r=await fetch("/api/users",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})});if(!r.ok){const d=await r.json();flash(d.error||"Error");return}setAppUsers(p=>p.filter(u=>u.id!==id));setConfDelU(null);flash("User removed")};
   const tog=id=>setSel(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
@@ -491,7 +466,7 @@ export default function App(){
         {pg==="speakers"&&<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"24px",flexWrap:"wrap",gap:"12px"}}>
             <div><h1 style={{color:"#f1f5f9",fontSize:"24px",fontWeight:"700",margin:"0 0 4px"}}>Speakers</h1><p style={{color:"#64748b",fontSize:"13px",margin:0}}>Weekly meeting speaker schedule</p></div>
-            <div style={{display:"flex",gap:"8px"}}><a href={SHEET_URL} target="_blank" rel="noopener noreferrer" style={{...BTN("#334155","#cbd5e1"),display:"flex",alignItems:"center",gap:"6px",textDecoration:"none"}}><Icons.Ext/>Google Sheet</a><div onClick={()=>{setEditS(null);setShowSM(true)}} style={{...BTN("linear-gradient(135deg,#3b82f6,#6366f1)"),display:"flex",alignItems:"center",gap:"6px"}}><Icons.Plus/>Add Speaker</div></div>
+            <div style={{display:"flex",gap:"8px"}}><div onClick={syncFromSheet} style={{...BTN("#334155","#cbd5e1"),display:"flex",alignItems:"center",gap:"6px",opacity:syncing?0.5:1,pointerEvents:syncing?"none":"auto"}}><Icons.Refresh/>{syncing?"Syncing...":"Sync from Sheet"}</div><a href={SHEET_URL} target="_blank" rel="noopener noreferrer" style={{...BTN("#334155","#cbd5e1"),display:"flex",alignItems:"center",gap:"6px",textDecoration:"none"}}><Icons.Ext/>Google Sheet</a><div onClick={()=>{setEditS(null);setShowSM(true)}} style={{...BTN("linear-gradient(135deg,#3b82f6,#6366f1)"),display:"flex",alignItems:"center",gap:"6px"}}><Icons.Plus/>Add Speaker</div></div>
           </div>
           <div style={{display:"flex",gap:"12px",marginBottom:"20px"}}>{[["upcoming","Upcoming"],["open","Open Slots ("+openSlots+")"],["all","All"],["past","Past"]].map(([k,l])=><div key={k} onClick={()=>setSpFil(k)} style={{padding:"10px 16px",border:"1px solid",borderRadius:"8px",fontSize:"13px",cursor:"pointer",fontWeight:"500",background:spFil===k?"#3b82f620":"#1e293b",borderColor:spFil===k?"#3b82f6":"#334155",color:spFil===k?"#93c5fd":"#94a3b8"}}>{l}</div>)}</div>
           <div style={{background:"#1e293b",borderRadius:"12px",border:"1px solid #334155",overflow:"hidden"}}>
@@ -514,7 +489,7 @@ export default function App(){
             })}
             {fsp.length===0&&<div style={{padding:"40px",textAlign:"center",color:"#64748b"}}>No speakers found</div>}
           </div>
-          <div style={{marginTop:"12px",color:"#64748b",fontSize:"12px"}}>Changes here should also be synced to the Google Sheet</div>
+          <div style={{marginTop:"12px",color:"#64748b",fontSize:"12px"}}>Click &quot;Sync from Sheet&quot; to pull latest data from the Google Sheet</div>
         </div>}
 
         {pg==="email"&&<div>
@@ -579,4 +554,3 @@ export default function App(){
     </div>
   );
 }
-
