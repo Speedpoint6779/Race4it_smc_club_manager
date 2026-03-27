@@ -58,7 +58,8 @@ export async function ensureTables(sql) {
       recipient_emails TEXT DEFAULT '',
       sent_at TIMESTAMP DEFAULT NOW(),
       status TEXT DEFAULT 'sent',
-      error TEXT DEFAULT ''
+      error TEXT DEFAULT '',
+      deleted BOOLEAN DEFAULT false
     )
   `;
   await sql`
@@ -71,7 +72,8 @@ export async function ensureTables(sql) {
       body_html TEXT DEFAULT '',
       message_id TEXT DEFAULT '',
       is_read BOOLEAN DEFAULT false,
-      received_at TIMESTAMP DEFAULT NOW()
+      received_at TIMESTAMP DEFAULT NOW(),
+      deleted BOOLEAN DEFAULT false
     )
   `;
   await sql`
@@ -83,6 +85,11 @@ export async function ensureTables(sql) {
       updated_at TIMESTAMP DEFAULT NOW()
     )
   `;
+
+  // Add deleted column to existing tables if not present (safe migration)
+  await sql`ALTER TABLE email_log ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT false`;
+  await sql`ALTER TABLE inbox_messages ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT false`;
+
   const existing = await sql`SELECT COUNT(*) as count FROM users`;
   if (parseInt(existing[0].count) === 0) {
     await sql`INSERT INTO users (name, username, password) VALUES ('Admin', 'admin', 'admin123')`;
