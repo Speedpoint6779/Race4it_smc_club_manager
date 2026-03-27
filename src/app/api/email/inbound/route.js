@@ -1,8 +1,26 @@
 import { NextResponse } from 'next/server';
 import { getDb, ensureTables } from '../../db';
 
+// GET /api/email/inbound — fetch received messages for Inbox tab
+export async function GET() {
+  try {
+    const sql = getDb();
+    await ensureTables(sql);
+    const rows = await sql`
+      SELECT id, from_address, to_address, subject, body_text, is_read, received_at
+      FROM inbox_messages
+      ORDER BY received_at DESC
+      LIMIT 100
+    `;
+    return NextResponse.json(rows);
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
 // POST /api/email/inbound — Resend inbound webhook
 // Configure in Resend dashboard: Domains → your domain → Inbound webhook URL
+// Set to: https://manager.seniormensclub.org/api/email/inbound
 export async function POST(req) {
   try {
     const payload = await req.json();
