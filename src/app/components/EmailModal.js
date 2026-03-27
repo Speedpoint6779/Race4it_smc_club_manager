@@ -5,12 +5,50 @@ import { IS, LS, BTN, getDuesStatus } from "./ui";
 
 const TEMPLATES = {
   dues: {
-    subject: "SMC Annual Dues Reminder",
-    body: `<p>Dear Member,</p><p>This is a friendly reminder that your Senior Men's Club annual dues of $50 are now due.</p><p>Please send your payment to the club treasurer at your earliest convenience. You can pay by check made payable to "Senior Men's Club" or bring cash to the next meeting.</p><p>If you have already paid, please disregard this notice.</p><p>Thank you for your continued membership and support of the club.</p><p>Sincerely,<br/>SMC Club Officers</p>`,
+    subject: "Annual Dues Reminder — Senior Men's Club",
+    body: `<p style="margin:0 0 20px 0; font-size:16px; color:#1e293b;">Dear Member,</p>
+
+<p style="margin:0 0 16px 0; font-size:15px; line-height:1.7; color:#334155;">We hope this note finds you well. This is a friendly reminder that your annual dues for the <strong>Senior Men's Club</strong> are now due.</p>
+
+<table style="width:100%; border-collapse:collapse; margin:24px 0; border-radius:8px; overflow:hidden;">
+  <tr>
+    <td style="background:#f1f5f9; padding:16px 20px; border-left:4px solid #3b82f6;">
+      <p style="margin:0 0 4px 0; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:#64748b;">Annual Dues Amount</p>
+      <p style="margin:0; font-size:24px; font-weight:700; color:#1e293b;">$50.00</p>
+    </td>
+  </tr>
+</table>
+
+<p style="margin:0 0 12px 0; font-size:15px; line-height:1.7; color:#334155;"><strong>Payment may be made in one of two ways:</strong></p>
+
+<ul style="margin:0 0 20px 0; padding-left:24px; color:#334155; font-size:15px; line-height:1.9;">
+  <li>By <strong>check</strong> made payable to <em>Senior Men's Club</em>, delivered to the club treasurer</li>
+  <li>By <strong>cash</strong> at the next scheduled club meeting</li>
+</ul>
+
+<p style="margin:0 0 20px 0; font-size:15px; line-height:1.7; color:#334155;">If you have already submitted your payment, please disregard this notice — and thank you!</p>
+
+<hr style="border:none; border-top:1px solid #e2e8f0; margin:24px 0;" />
+
+<p style="margin:0 0 8px 0; font-size:15px; line-height:1.7; color:#334155;">Your continued membership means a great deal to our club and community. We look forward to seeing you at our upcoming events.</p>
+
+<p style="margin:24px 0 4px 0; font-size:15px; color:#334155;">Warm regards,</p>
+<p style="margin:0; font-size:15px; font-weight:600; color:#1e293b;">The Senior Men's Club Officers</p>`,
   },
   meeting: {
-    subject: "SMC Meeting Announcement",
-    body: `<p>Dear Members,</p><p>This is a reminder about our upcoming Senior Men's Club meeting.</p><p>We look forward to seeing everyone there. Please check the club calendar for the date, time, and location.</p><p>If you have any agenda items you would like to discuss, please contact the club secretary in advance.</p><p>See you there!</p><p>Sincerely,<br/>SMC Club Officers</p>`,
+    subject: "Upcoming Meeting — Senior Men's Club",
+    body: `<p style="margin:0 0 20px 0; font-size:16px; color:#1e293b;">Dear Member,</p>
+
+<p style="margin:0 0 16px 0; font-size:15px; line-height:1.7; color:#334155;">This is a friendly reminder about our upcoming <strong>Senior Men's Club</strong> meeting. We look forward to seeing everyone there.</p>
+
+<p style="margin:0 0 16px 0; font-size:15px; line-height:1.7; color:#334155;">Please check the club calendar for the date, time, and location. If you have any agenda items you would like to bring before the group, kindly contact the club secretary in advance so we can include them on the agenda.</p>
+
+<p style="margin:0 0 20px 0; font-size:15px; line-height:1.7; color:#334155;">Your participation and involvement make our meetings worthwhile — we hope to see you there!</p>
+
+<hr style="border:none; border-top:1px solid #e2e8f0; margin:24px 0;" />
+
+<p style="margin:24px 0 4px 0; font-size:15px; color:#334155;">Warm regards,</p>
+<p style="margin:0; font-size:15px; font-weight:600; color:#1e293b;">The Senior Men's Club Officers</p>`,
   },
 };
 
@@ -196,7 +234,6 @@ export function EmailModal({ members, pre, lists = [], onClose, onSend, onListSa
                     <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
                       <span onClick={() => setSel(members.filter(m => m.status === "active").map(m => m.id))} style={{ color: "#3b82f6", fontSize: "12px", cursor: "pointer", padding: "2px 8px", borderRadius: "4px", background: "#3b82f610" }}>All Active</span>
                       <span onClick={() => setSel(members.filter(m => getDuesStatus(m) !== "paid" && m.status === "active").map(m => m.id))} style={{ color: "#fbbf24", fontSize: "12px", cursor: "pointer", padding: "2px 8px", borderRadius: "4px", background: "#fbbf2410" }}>Unpaid</span>
-                      {/* Saved lists dropdown */}
                       {lists.length > 0 && lists.map(l => (
                         <span key={l.id} onClick={() => setSel(l.member_ids)} style={{ color: "#a78bfa", fontSize: "12px", cursor: "pointer", padding: "2px 8px", borderRadius: "4px", background: "#a78bfa10", border: "1px solid #a78bfa30" }}>
                           📋 {l.name}
@@ -227,7 +264,6 @@ export function EmailModal({ members, pre, lists = [], onClose, onSend, onListSa
                       </span>
                     </div>
                   )}
-                  {/* Save list inline form */}
                   {showSaveList && sel.length > 0 && (
                     <div style={{ marginTop: "10px", display: "flex", gap: "8px", alignItems: "center", background: "#0f172a", padding: "10px 12px", borderRadius: "8px", border: "1px solid #334155" }}>
                       <input
