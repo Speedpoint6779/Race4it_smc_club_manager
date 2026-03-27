@@ -42,7 +42,7 @@ export async function DELETE(req) {
   }
 }
 
-// PATCH /api/email?id=123&restore=true — restore from trash
+// PATCH /api/email?id=123 — restore from trash
 export async function PATCH(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -77,17 +77,38 @@ export async function POST(req) {
     if (!members.length) {
       return NextResponse.json({ error: 'No valid email addresses found for selected members' }, { status: 400 });
     }
-    const emailHtml = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#333;">
-      <div style="margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #3b82f6;">
-        <strong style="font-size:18px;color:#1e3a5f;">Senior Men's Club</strong>
-      </div>
-      <div style="line-height:1.6;font-size:15px;">
-        ${htmlBody || body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>')}
-      </div>
-      <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;">
-        Senior Men's Club &bull; Sent via SMC Club Manager
-      </div>
-    </div>`;
+
+    // Wrap the body in a branded shell.
+    // The <style> block resets <p> margins so email clients don't add
+    // huge default spacing between paragraphs from Quill output.
+    const emailHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin:0; padding:0; font-family:Arial,Helvetica,sans-serif; background:#f9fafb; }
+  p { margin:0 0 12px 0 !important; padding:0; }
+  ul, ol { margin:0 0 12px 0; padding-left:24px; }
+  li { margin:0 0 4px 0; }
+  strong { font-weight:700; }
+  a { color:#3b82f6; }
+</style>
+</head>
+<body>
+<div style="max-width:600px;margin:0 auto;padding:32px 24px;background:#ffffff;">
+  <div style="margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #3b82f6;">
+    <span style="font-size:18px;font-weight:700;color:#1e3a5f;">Senior Men's Club</span>
+  </div>
+  <div style="line-height:1.7;font-size:15px;color:#1e293b;">
+    ${htmlBody || body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>')}
+  </div>
+  <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;">
+    Senior Men's Club &bull; Sent via SMC Club Manager
+  </div>
+</div>
+</body>
+</html>`;
+
     const batch = members.map(m => ({
       from: FROM, reply_to: REPLY_TO,
       to: [`${m.first_name} ${m.last_name} <${m.email}>`],
