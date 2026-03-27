@@ -1,13 +1,14 @@
 "use client";
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { Icons } from "./components/Icons";
-import { IS, LS, BTN, fmtDate, getDuesStatus, getNextDue, DuesBadge, Confirm } from "./components/ui";
+import { IS, LS, fmtDate, getDuesStatus, getNextDue, Confirm } from "./components/ui";
 import { MemberModal, DetailModal } from "./components/MemberModal";
 import { SpeakerModal } from "./components/SpeakerModal";
 import { EmailModal } from "./components/EmailModal";
 import { PaymentModal } from "./components/PaymentModal";
 import { UserModal } from "./components/UserModal";
 import { DashboardPage } from "./components/pages/DashboardPage";
+import { MembersPage } from "./components/pages/MembersPage";
 import { SpeakersPage } from "./components/pages/SpeakersPage";
 import { EmailPage } from "./components/pages/EmailPage";
 import { PaymentsPage } from "./components/pages/PaymentsPage";
@@ -18,13 +19,10 @@ export default function App() {
   const [un, setUn] = useState(""); const [pw, setPw] = useState(""); const [le, setLe] = useState("");
   const [pg, setPg] = useState("dashboard");
   const [members, setMembers] = useState([]); const [speakers, setSpeakers] = useState([]);
-  const [loading, setLoading] = useState(true); const [syncing, setSyncing] = useState(false);
-  const [showMM, setShowMM] = useState(false); const [editM, setEditM] = useState(null); const [viewM, setViewM] = useState(null);
-  const [showEM, setShowEM] = useState(false); const [emailPre, setEmailPre] = useState([]);
-  const [showPM, setShowPM] = useState(false); const [showSM, setShowSM] = useState(false); const [editS, setEditS] = useState(null);
-  const [confDel, setConfDel] = useState(null); const [confDelS, setConfDelS] = useState(null);
-  const [appUsers, setAppUsers] = useState([]); const [showUM, setShowUM] = useState(false); const [editU, setEditU] = useState(null); const [confDelU, setConfDelU] = useState(null);
-  const [toast, setToast] = useState(null); const [selMode, setSelMode] = useState(false); const [sel, setSel] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [appUsers, setAppUsers] = useState([]);
+  const [toast, setToast] = useState(null);
+  const [selMode, setSelMode] = useState(false); const [sel, setSel] = useState([]);
 
   useEffect(() => {
     fetch("/api/members").then(r => r.json()).then(data => {
@@ -53,35 +51,13 @@ export default function App() {
   const pc = mwd.filter(m => m._ds === "paid" && m.status === "active").length;
   const oc = mwd.filter(m => m._ds === "overdue").length;
 
-  const saveM = async (m) => {
-    const isEdit = members.find(x => x.id === m.id);
-    if (isEdit) { await fetch("/api/members", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(m) }); setMembers(p => p.map(x => x.id === m.id ? m : x)); }
-    else { const r = await fetch("/api/members", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(m) }); const d = await r.json(); setMembers(p => [...p, { ...m, id: d.id }]); }
-    setShowMM(false); setEditM(null); flash(isEdit ? "Member updated" : "Member added");
-  };
-  const delM = async (id) => { await fetch("/api/members", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }); setMembers(p => p.filter(m => m.id !== id)); setConfDel(null); flash("Member removed"); };
-  const saveS = async (s) => {
-    const isEdit = speakers.find(x => x.id === s.id);
-    if (isEdit) { await fetch("/api/speakers", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(s) }); setSpeakers(p => p.map(x => x.id === s.id ? s : x)); }
-    else { const r = await fetch("/api/speakers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(s) }); const d = await r.json(); setSpeakers(p => [...p, { ...s, id: d.id || s.id }].sort((a, b) => a.date.localeCompare(b.date))); }
-    setShowSM(false); setEditS(null); flash(isEdit ? "Speaker updated" : "Speaker added");
-  };
-  const delS = async (id) => { await fetch("/api/speakers", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }); setSpeakers(p => p.filter(s => s.id !== id)); setConfDelS(null); flash("Speaker removed"); };
-  const saveU = async (u) => {
-    const isEdit = appUsers.find(x => x.id === u.id);
-    if (isEdit) { const r = await fetch("/api/users", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(u) }); if (!r.ok) { const d = await r.json(); flash(d.error || "Error"); return; } setAppUsers(p => p.map(x => x.id === u.id ? { ...x, name: u.name, username: u.username } : x)); }
-    else { const r = await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(u) }); const d = await r.json(); if (!r.ok) { flash(d.error || "Error"); return; } setAppUsers(p => [...p, { id: d.id, name: u.name, username: u.username, createdAt: new Date().toISOString().split("T")[0] }]); }
-    setShowUM(false); setEditU(null); flash(isEdit ? "User updated" : "User added");
-  };
-  const delU = async (id) => { const r = await fetch("/api/users", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }); if (!r.ok) { const d = await r.json(); flash(d.error || "Error"); return; } setAppUsers(p => p.filter(u => u.id !== id)); setConfDelU(null); flash("User removed"); };
-
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: Icons.Home },
-    { id: "members", label: "Members", icon: Icons.Users },
-    { id: "speakers", label: "Speakers", icon: Icons.Mic },
-    { id: "email", label: "Email", icon: Icons.Mail },
-    { id: "payments", label: "Payments", icon: Icons.Dollar },
-    { id: "users", label: "Users", icon: Icons.Gear },
+    { id: "members",   label: "Members",   icon: Icons.Users },
+    { id: "speakers",  label: "Speakers",  icon: Icons.Mic },
+    { id: "email",     label: "Email",     icon: Icons.Mail },
+    { id: "payments",  label: "Payments",  icon: Icons.Dollar },
+    { id: "users",     label: "Users",     icon: Icons.Gear },
   ];
 
   if (loading) return (
@@ -146,25 +122,15 @@ export default function App() {
         </div>
       </div>
 
-      {/* Main content — each page is its own file in components/pages/ */}
+      {/* Main — each page lives in its own file under components/pages/ */}
       <div style={{ flex: 1, overflow: "auto", padding: "32px" }}>
         {pg === "dashboard" && <DashboardPage members={members} mwd={mwd} speakers={speakers} ac={ac} pc={pc} oc={oc} />}
-        {pg === "members" && <div>Members page — see MembersPage.js (coming soon)</div>}
-        {pg === "speakers" && <SpeakersPage speakers={speakers} setSpeakers={setSpeakers} flash={flash} syncing={syncing} setSyncing={setSyncing} setEditS={setEditS} setShowSM={setShowSM} setConfDelS={setConfDelS} />}
-        {pg === "email" && <EmailPage members={members} mwd={mwd} ac={ac} setPg={setPg} setSelMode={setSelMode} setSel={setSel} setEmailPre={setEmailPre} setShowEM={setShowEM} />}
-        {pg === "payments" && <PaymentsPage mwd={mwd} members={members} setMembers={setMembers} ac={ac} pc={pc} oc={oc} flash={flash} setShowPM={setShowPM} />}
-        {pg === "users" && <UsersPage appUsers={appUsers} setEditU={setEditU} setShowUM={setShowUM} setConfDelU={setConfDelU} />}
+        {pg === "members"   && <MembersPage mwd={mwd} members={members} setMembers={setMembers} flash={flash} />}
+        {pg === "speakers"  && <SpeakersPage speakers={speakers} setSpeakers={setSpeakers} flash={flash} />}
+        {pg === "email"     && <EmailPage members={members} mwd={mwd} ac={ac} setPg={setPg} setSelMode={setSelMode} setSel={setSel} />}
+        {pg === "payments"  && <PaymentsPage mwd={mwd} members={members} setMembers={setMembers} ac={ac} pc={pc} oc={oc} flash={flash} />}
+        {pg === "users"     && <UsersPage appUsers={appUsers} setAppUsers={setAppUsers} flash={flash} />}
       </div>
-
-      {showMM && <MemberModal member={editM} onSave={saveM} onClose={() => { setShowMM(false); setEditM(null); }} />}
-      {viewM && <DetailModal member={viewM} onClose={() => setViewM(null)} />}
-      {showEM && <EmailModal members={members} pre={emailPre} onClose={() => setShowEM(false)} onSend={() => flash("Emails sent")} />}
-      {showPM && <PaymentModal members={members} onClose={() => setShowPM(false)} />}
-      {showSM && <SpeakerModal speaker={editS} onSave={saveS} onClose={() => { setShowSM(false); setEditS(null); }} />}
-      {showUM && <UserModal user={editU} onSave={saveU} onClose={() => { setShowUM(false); setEditU(null); }} />}
-      {confDel && <Confirm title="Delete Member" msg={"Remove " + confDel.firstName + " " + confDel.lastName + "?"} onOk={() => delM(confDel.id)} onNo={() => setConfDel(null)} />}
-      {confDelS && <Confirm title="Delete Speaker" msg={"Remove " + (confDelS.speaker || "this entry") + " on " + fmtDate(confDelS.date) + "?"} onOk={() => delS(confDelS.id)} onNo={() => setConfDelS(null)} />}
-      {confDelU && <Confirm title="Delete User" msg={"Remove user " + confDelU.name + "?"} onOk={() => delU(confDelU.id)} onNo={() => setConfDelU(null)} />}
     </div>
   );
 }

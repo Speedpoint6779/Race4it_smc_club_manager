@@ -1,8 +1,12 @@
 import { Icons } from "../Icons";
 import { BTN, HS, fmtDate, DuesBadge, Stat } from "../ui";
+import { PaymentModal } from "../PaymentModal";
+import { useState } from "react";
 
-export function PaymentsPage({ mwd, members, setMembers, ac, pc, oc, flash, setShowPM }) {
+export function PaymentsPage({ mwd, members, setMembers, ac, pc, oc, flash }) {
+  const [showPM, setShowPM] = useState(false);
   const pCols = "2fr 2fr 80px 90px 90px 100px";
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
@@ -47,6 +51,7 @@ export function PaymentsPage({ mwd, members, setMembers, ac, pc, oc, flash, setS
           <p style={{ margin: 0 }}>3. Add secret key to env variables</p>
         </div>
       </div>
+      {showPM && <PaymentModal members={members} onClose={() => setShowPM(false)} />}
     </div>
   );
 }

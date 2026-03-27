@@ -1,7 +1,12 @@
 import { Icons } from "../Icons";
 import { BTN } from "../ui";
+import { EmailModal } from "../EmailModal";
+import { useState } from "react";
 
-export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, setEmailPre, setShowEM }) {
+export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel }) {
+  const [showEM, setShowEM] = useState(false);
+  const [emailPre, setEmailPre] = useState([]);
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
@@ -33,6 +38,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, setEmai
           <p style={{ margin: 0 }}>3. Add API key to env variables</p>
         </div>
       </div>
+      {showEM && <EmailModal members={members} pre={emailPre} onClose={() => setShowEM(false)} onSend={() => {}} />}
     </div>
   );
 }
