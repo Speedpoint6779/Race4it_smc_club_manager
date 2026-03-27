@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { getDb, ensureTables } from '../db';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM     = process.env.EMAIL_FROM     || 'SMC Club Manager <club@seniormensclub.org>';
 const REPLY_TO = process.env.EMAIL_REPLY_TO || 'club@seniormensclub.org';
 
@@ -36,10 +35,12 @@ export async function POST(req) {
       return NextResponse.json({ error: 'RESEND_API_KEY not configured' }, { status: 500 });
     }
 
+    // Initialize Resend inside the handler so it never runs at build time
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
     const sql = getDb();
     await ensureTables(sql);
 
-    // Fetch email addresses for selected member IDs
     const members = await sql`
       SELECT id, first_name, last_name, email
       FROM members
@@ -57,8 +58,6 @@ export async function POST(req) {
       name: `${m.first_name} ${m.last_name}`,
     }));
 
-    // Send via Resend — one email with BCC to protect privacy
-    // reply_to set so member replies come back to the club inbox
     const { data, error } = await resend.emails.send({
       from: FROM,
       reply_to: REPLY_TO,
