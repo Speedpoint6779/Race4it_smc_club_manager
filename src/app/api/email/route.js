@@ -57,6 +57,21 @@ export async function PATCH(req) {
   }
 }
 
+/**
+ * Clean up Quill HTML before sending:
+ * - Remove empty <p><br></p> spacer paragraphs Quill inserts between paragraphs
+ * - Collapse multiple consecutive empty paragraphs
+ * This prevents double-spacing in email clients.
+ */
+function cleanQuillHtml(html) {
+  if (!html) return html;
+  // Remove empty paragraphs that Quill uses as spacers (<p><br></p> or <p> </p>)
+  return html
+    .replace(/<p>(\s|&nbsp;)*<br\s*\/?>\s*<\/p>/gi, '')
+    .replace(/<p>(\s|&nbsp;)*<\/p>/gi, '')
+    .trim();
+}
+
 // POST /api/email — send email to selected member IDs
 export async function POST(req) {
   try {
@@ -78,18 +93,18 @@ export async function POST(req) {
       return NextResponse.json({ error: 'No valid email addresses found for selected members' }, { status: 400 });
     }
 
-    // Wrap the body in a branded shell.
-    // The <style> block resets <p> margins so email clients don't add
-    // huge default spacing between paragraphs from Quill output.
+    // Clean empty Quill spacer paragraphs before building the email
+    const cleanedBody = cleanQuillHtml(htmlBody);
+
     const emailHtml = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <style>
   body { margin:0; padding:0; font-family:Arial,Helvetica,sans-serif; background:#f9fafb; }
-  p { margin:0 0 12px 0 !important; padding:0; }
-  ul, ol { margin:0 0 12px 0; padding-left:24px; }
-  li { margin:0 0 4px 0; }
+  p { margin:0; padding:0 0 10px 0; }
+  ul, ol { margin:0; padding:0 0 10px 24px; }
+  li { margin:0 0 3px 0; }
   strong { font-weight:700; }
   a { color:#3b82f6; }
 </style>
@@ -100,7 +115,7 @@ export async function POST(req) {
     <span style="font-size:18px;font-weight:700;color:#1e3a5f;">Senior Men's Club</span>
   </div>
   <div style="line-height:1.7;font-size:15px;color:#1e293b;">
-    ${htmlBody || body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>')}
+    ${cleanedBody || body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>')}
   </div>
   <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;">
     Senior Men's Club &bull; Sent via SMC Club Manager
