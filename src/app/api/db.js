@@ -74,6 +74,15 @@ export async function ensureTables(sql) {
       received_at TIMESTAMP DEFAULT NOW()
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS email_lists (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      member_ids INTEGER[] NOT NULL DEFAULT '{}',
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
   const existing = await sql`SELECT COUNT(*) as count FROM users`;
   if (parseInt(existing[0].count) === 0) {
     await sql`INSERT INTO users (name, username, password) VALUES ('Admin', 'admin', 'admin123')`;
