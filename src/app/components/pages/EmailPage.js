@@ -6,8 +6,11 @@ import { useState, useEffect, useCallback } from "react";
 export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }) {
   const [showEM, setShowEM] = useState(false);
   const [emailPre, setEmailPre] = useState([]);
+  const [tab, setTab] = useState("sent"); // "sent" | "inbox"
   const [log, setLog] = useState([]);
+  const [inbox, setInbox] = useState([]);
   const [logLoading, setLogLoading] = useState(true);
+  const [inboxLoading, setInboxLoading] = useState(true);
 
   const loadLog = useCallback(() => {
     setLogLoading(true);
@@ -17,7 +20,15 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
       .catch(() => setLogLoading(false));
   }, []);
 
-  useEffect(() => { loadLog(); }, [loadLog]);
+  const loadInbox = useCallback(() => {
+    setInboxLoading(true);
+    fetch("/api/email/inbound")
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setInbox(d); setInboxLoading(false); })
+      .catch(() => setInboxLoading(false));
+  }, []);
+
+  useEffect(() => { loadLog(); loadInbox(); }, [loadLog, loadInbox]);
 
   const fmtDate = ts => {
     if (!ts) return "";
@@ -26,6 +37,18 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
   };
 
   const noEmail = members.filter(m => m.status === "active" && !m.email).length;
+  const unread = inbox.filter(m => !m.is_read).length;
+
+  const tabStyle = active => ({
+    padding: "8px 20px",
+    borderRadius: "8px",
+    cursor: "pointer",
+    fontSize: "14px",
+    fontWeight: active ? "600" : "400",
+    background: active ? "linear-gradient(135deg,#3b82f620,#6366f120)" : "transparent",
+    color: active ? "#93c5fd" : "#94a3b8",
+    border: active ? "1px solid #3b82f640" : "1px solid transparent",
+  });
 
   return (
     <div>
@@ -63,31 +86,71 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
         </div>
       )}
 
-      {/* Sent Email Log */}
+      {/* Inbox / Sent Tabs */}
       <div style={{ background: "#1e293b", borderRadius: "12px", border: "1px solid #334155" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid #334155" }}>
-          <h3 style={{ color: "#f1f5f9", fontSize: "15px", fontWeight: "600", margin: 0 }}>Sent Email History</h3>
-          <div onClick={loadLog} style={{ color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "12px" }}><Icons.Refresh />Refresh</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #334155" }}>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <div onClick={() => setTab("sent")} style={tabStyle(tab === "sent")}>Sent</div>
+            <div onClick={() => setTab("inbox")} style={{ ...tabStyle(tab === "inbox"), display: "flex", alignItems: "center", gap: "6px" }}>
+              Inbox
+              {unread > 0 && (
+                <span style={{ background: "#3b82f6", color: "white", borderRadius: "99px", fontSize: "10px", fontWeight: "700", padding: "1px 7px" }}>{unread}</span>
+              )}
+            </div>
+          </div>
+          <div
+            onClick={() => { tab === "sent" ? loadLog() : loadInbox(); }}
+            style={{ color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "12px" }}
+          >
+            <Icons.Refresh />Refresh
+          </div>
         </div>
-        {logLoading
-          ? <div style={{ padding: "32px", textAlign: "center", color: "#64748b", fontSize: "14px" }}>Loading...</div>
-          : log.length === 0
-            ? <div style={{ padding: "32px", textAlign: "center", color: "#64748b", fontSize: "14px" }}>No emails sent yet</div>
-            : <div>
-                {log.map((entry, i) => (
-                  <div key={entry.id} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: "16px", alignItems: "center", padding: "12px 20px", borderBottom: i < log.length - 1 ? "1px solid #1e293b" : "none", background: i % 2 === 0 ? "#0f172a20" : "transparent" }}>
-                    <div>
-                      <div style={{ color: "#f1f5f9", fontSize: "14px", fontWeight: "500", marginBottom: "2px" }}>{entry.subject}</div>
-                      <div style={{ color: "#64748b", fontSize: "12px" }}>{fmtDate(entry.sent_at)}</div>
+
+        {/* Sent Tab */}
+        {tab === "sent" && (
+          logLoading
+            ? <div style={{ padding: "32px", textAlign: "center", color: "#64748b", fontSize: "14px" }}>Loading...</div>
+            : log.length === 0
+              ? <div style={{ padding: "32px", textAlign: "center", color: "#64748b", fontSize: "14px" }}>No emails sent yet</div>
+              : <div>
+                  {log.map((entry, i) => (
+                    <div key={entry.id} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: "16px", alignItems: "center", padding: "12px 20px", borderBottom: i < log.length - 1 ? "1px solid #334155" : "none", background: i % 2 === 0 ? "#0f172a20" : "transparent" }}>
+                      <div>
+                        <div style={{ color: "#f1f5f9", fontSize: "14px", fontWeight: "500", marginBottom: "2px" }}>{entry.subject}</div>
+                        <div style={{ color: "#64748b", fontSize: "12px" }}>{fmtDate(entry.sent_at)}</div>
+                      </div>
+                      <div style={{ color: "#94a3b8", fontSize: "13px", whiteSpace: "nowrap" }}>{entry.recipient_count} recipient{entry.recipient_count !== 1 ? "s" : ""}</div>
+                      <div style={{ padding: "3px 10px", borderRadius: "99px", fontSize: "11px", fontWeight: "600", background: entry.status === "sent" ? "#06402020" : "#7f1d1d20", color: entry.status === "sent" ? "#34d399" : "#f87171", border: `1px solid ${entry.status === "sent" ? "#06402040" : "#7f1d1d40"}` }}>
+                        {entry.status === "sent" ? "Sent" : "Failed"}
+                      </div>
                     </div>
-                    <div style={{ color: "#94a3b8", fontSize: "13px", whiteSpace: "nowrap" }}>{entry.recipient_count} recipient{entry.recipient_count !== 1 ? "s" : ""}</div>
-                    <div style={{ padding: "3px 10px", borderRadius: "99px", fontSize: "11px", fontWeight: "600", background: entry.status === "sent" ? "#06402020" : "#7f1d1d20", color: entry.status === "sent" ? "#34d399" : "#f87171", border: `1px solid ${entry.status === "sent" ? "#06402040" : "#7f1d1d40"}` }}>
-                      {entry.status === "sent" ? "Sent" : "Failed"}
+                  ))}
+                </div>
+        )}
+
+        {/* Inbox Tab */}
+        {tab === "inbox" && (
+          inboxLoading
+            ? <div style={{ padding: "32px", textAlign: "center", color: "#64748b", fontSize: "14px" }}>Loading...</div>
+            : inbox.length === 0
+              ? <div style={{ padding: "32px", textAlign: "center", color: "#64748b", fontSize: "14px" }}>No messages received yet</div>
+              : <div>
+                  {inbox.map((msg, i) => (
+                    <div key={msg.id} style={{ padding: "14px 20px", borderBottom: i < inbox.length - 1 ? "1px solid #334155" : "none", background: !msg.is_read ? "#3b82f608" : "transparent" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "4px" }}>
+                        <div style={{ color: !msg.is_read ? "#f1f5f9" : "#94a3b8", fontSize: "14px", fontWeight: !msg.is_read ? "600" : "400" }}>{msg.subject}</div>
+                        <div style={{ color: "#64748b", fontSize: "11px", whiteSpace: "nowrap", marginLeft: "16px" }}>{fmtDate(msg.received_at)}</div>
+                      </div>
+                      <div style={{ color: "#64748b", fontSize: "12px" }}>From: {msg.from_address}</div>
+                      {msg.body_text && (
+                        <div style={{ color: "#94a3b8", fontSize: "13px", marginTop: "6px", lineHeight: "1.5", maxHeight: "48px", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {msg.body_text.slice(0, 200)}{msg.body_text.length > 200 ? "…" : ""}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
-              </div>
-        }
+                  ))}
+                </div>
+        )}
       </div>
 
       {showEM && (
