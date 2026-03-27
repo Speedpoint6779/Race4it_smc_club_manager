@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
-import { getDb, ensureTables } from '../db';
+import { getDb, ensureTables } from '../../db';
 
 const FROM     = process.env.EMAIL_FROM     || 'SMC Club Manager <club@seniormensclub.org>';
 const REPLY_TO = process.env.EMAIL_REPLY_TO || 'club@seniormensclub.org';
