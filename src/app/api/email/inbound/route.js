@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
+import { Resend } from 'resend';
 import { getDb, ensureTables } from '../../db';
+
+const FORWARD_TO = 'george@nctaylors.com';
+const FROM       = process.env.EMAIL_FROM || 'SMC Club Manager <club@seniormensclub.org>';
 
 // GET /api/email/inbound — fetch received messages for Inbox tab
 export async function GET() {
@@ -18,29 +22,39 @@ export async function GET() {
   }
 }
 
+// DELETE /api/email/inbound?id=123 — delete an inbox message
+export async function DELETE(req) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = parseInt(searchParams.get('id'));
+    if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
+    const sql = getDb();
+    await ensureTables(sql);
+    await sql`DELETE FROM inbox_messages WHERE id = ${id}`;
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
 // Decode quoted-printable: join soft line breaks, then decode =XX hex bytes
 function decodeQP(str) {
   return str
-    .replace(/=\r?\n/g, '')                                        // soft line break
-    .replace(/=([0-9A-Fa-f]{2})/g, (_, h) =>
-      String.fromCharCode(parseInt(h, 16))
-    );
+    .replace(/=\r?\n/g, '')
+    .replace(/=([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
 }
 
-// Decode RFC 2047 encoded-word in headers: =?UTF-8?Q?...?= or =?UTF-8?B?...?=
+// Decode RFC 2047 encoded-word in headers
 function decodeHeader(str) {
   if (!str) return str;
   return str.replace(/=\?([^?]+)\?([BQbq])\?([^?]*)\?=/g, (_, _cs, enc, text) => {
     try {
-      if (enc.toUpperCase() === 'Q') {
-        return decodeQP(text.replace(/_/g, ' '));
-      }
+      if (enc.toUpperCase() === 'Q') return decodeQP(text.replace(/_/g, ' '));
       return Buffer.from(text, 'base64').toString('utf-8');
     } catch { return text; }
   });
 }
 
-// Get a single header value from raw MIME, unfolding continuation lines
 function getHeader(raw, name) {
   const re = new RegExp('^' + name + ':[ \\t]*([\\s\\S]*?)(?=\\r?\\n[^ \\t]|\\r?\\n\\r?\\n|$)', 'im');
   const m = raw.match(re);
@@ -48,35 +62,25 @@ function getHeader(raw, name) {
   return decodeHeader(m[1].replace(/\r?\n[ \t]+/g, ' ').trim());
 }
 
-// Split raw MIME at first blank line into { headers, body }
 function splitPart(text) {
   const i = text.search(/\r?\n\r?\n/);
   if (i === -1) return { headers: text, body: '' };
   return { headers: text.slice(0, i), body: text.slice(i + (text[i + 1] === '\r' ? 4 : 2)) };
 }
 
-// Extract clean plain text from a raw MIME message
 function extractBody(raw) {
   const { headers, body } = splitPart(raw);
-
   const cte = (headers.match(/content-transfer-encoding:\s*(\S+)/i) || [])[1] || '7bit';
-
-  // Multipart — find the text/plain part recursively
   const bm = headers.match(/boundary="?([^"\r\n;]+)"?/i);
   if (bm) {
     const boundary = bm[1].trim();
     const escaped = boundary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const parts = body.split(new RegExp('--' + escaped + '(?:--)?(?:\r?\n|$)'));
-
-    // Prefer text/plain
     for (const part of parts) {
       if (!part.trim()) continue;
       const { headers: ph } = splitPart(part);
-      if (/content-type:\s*text\/plain/i.test(ph)) {
-        return extractBody(part); // recurse to handle its own CTE
-      }
+      if (/content-type:\s*text\/plain/i.test(ph)) return extractBody(part);
     }
-    // Fallback: text/html — strip tags
     for (const part of parts) {
       if (!part.trim()) continue;
       const { headers: ph } = splitPart(part);
@@ -85,27 +89,17 @@ function extractBody(raw) {
         return decoded
           .replace(/<style[\s\S]*?<\/style>/gi, '')
           .replace(/<[^>]+>/g, '')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/&amp;/g, '&')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&quot;/g, '"')
-          .replace(/&#39;/g, "'")
-          .replace(/\r?\n{3,}/g, '\n\n')
-          .trim();
+          .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+          .replace(/\r?\n{3,}/g, '\n\n').trim();
       }
     }
     return '';
   }
-
-  // Single part — decode based on CTE
   let decoded = body;
-  if (cte.toLowerCase() === 'quoted-printable') {
-    decoded = decodeQP(body);
-  } else if (cte.toLowerCase() === 'base64') {
-    decoded = Buffer.from(body.replace(/\s/g, ''), 'base64').toString('utf-8');
-  }
-
+  if (cte.toLowerCase() === 'quoted-printable') decoded = decodeQP(body);
+  else if (cte.toLowerCase() === 'base64') decoded = Buffer.from(body.replace(/\s/g, ''), 'base64').toString('utf-8');
   return decoded.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
 }
 
@@ -113,14 +107,11 @@ function extractBody(raw) {
 export async function POST(req) {
   try {
     const payload = await req.json();
-
     let from, to, subject, bodyText, bodyHtml, messageId;
-
     const data = payload.data || payload;
     const rawEmail = data.raw || data.message || '';
 
     if (rawEmail && typeof rawEmail === 'string' && /content-type:/i.test(rawEmail)) {
-      // Raw RFC 2822 — parse it ourselves
       from      = getHeader(rawEmail, 'From');
       to        = getHeader(rawEmail, 'To');
       subject   = getHeader(rawEmail, 'Subject');
@@ -128,7 +119,6 @@ export async function POST(req) {
       bodyText  = extractBody(rawEmail);
       bodyHtml  = '';
     } else {
-      // Resend pre-parsed fields
       from      = data.from      || data.sender  || payload.from   || payload.sender || '';
       to        = Array.isArray(data.to) ? data.to.join(', ') : (data.to || payload.to || '');
       subject   = data.subject   || payload.subject  || '(no subject)';
@@ -142,9 +132,7 @@ export async function POST(req) {
     await ensureTables(sql);
 
     if (messageId) {
-      const existing = await sql`
-        SELECT id FROM inbox_messages WHERE message_id = ${messageId} LIMIT 1
-      `;
+      const existing = await sql`SELECT id FROM inbox_messages WHERE message_id = ${messageId} LIMIT 1`;
       if (existing.length > 0) return NextResponse.json({ ok: true, duplicate: true });
     }
 
@@ -152,6 +140,36 @@ export async function POST(req) {
       INSERT INTO inbox_messages (from_address, to_address, subject, body_text, body_html, message_id)
       VALUES (${from}, ${to}, ${subject}, ${bodyText}, ${bodyHtml}, ${messageId})
     `;
+
+    // Forward a copy to george@nctaylors.com
+    if (process.env.RESEND_API_KEY) {
+      try {
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        const fwdBody = bodyText || '(no plain-text body)';
+        await resend.emails.send({
+          from: FROM,
+          to: [FORWARD_TO],
+          subject: `Fwd: ${subject}`,
+          text: `-------- Forwarded Message --------\nFrom: ${from}\nTo: ${to}\nSubject: ${subject}\n\n${fwdBody}`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#333;">
+            <p style="color:#64748b;font-size:13px;border-bottom:1px solid #e5e7eb;padding-bottom:12px;margin-bottom:16px;">
+              <strong>Forwarded from SMC Club Manager inbox</strong>
+            </p>
+            <table style="font-size:13px;color:#475569;margin-bottom:16px;">
+              <tr><td style="padding-right:12px;color:#94a3b8;">From:</td><td>${from}</td></tr>
+              <tr><td style="padding-right:12px;color:#94a3b8;">To:</td><td>${to}</td></tr>
+              <tr><td style="padding-right:12px;color:#94a3b8;">Subject:</td><td>${subject}</td></tr>
+            </table>
+            <div style="white-space:pre-wrap;line-height:1.6;font-size:15px;border-top:1px solid #e5e7eb;padding-top:16px;">${
+              bodyHtml ||
+              fwdBody.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>')
+            }</div>
+          </div>`,
+        });
+      } catch (fwdErr) {
+        console.error('Forward error:', fwdErr);
+      }
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {

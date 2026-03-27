@@ -22,6 +22,21 @@ export async function GET() {
   }
 }
 
+// DELETE /api/email?id=123 — delete a sent email log entry
+export async function DELETE(req) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = parseInt(searchParams.get('id'));
+    if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
+    const sql = getDb();
+    await ensureTables(sql);
+    await sql`DELETE FROM email_log WHERE id = ${id}`;
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
 // POST /api/email — send email to selected member IDs
 export async function POST(req) {
   try {
@@ -35,7 +50,6 @@ export async function POST(req) {
       return NextResponse.json({ error: 'RESEND_API_KEY not configured' }, { status: 500 });
     }
 
-    // Initialize Resend inside the handler so it never runs at build time
     const resend = new Resend(process.env.RESEND_API_KEY);
 
     const sql = getDb();

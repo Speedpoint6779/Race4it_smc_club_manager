@@ -4,16 +4,12 @@ import { EmailModal } from "../EmailModal";
 import { useState, useEffect, useCallback } from "react";
 
 // Client-side fallback: decode any quoted-printable that slipped into stored body_text
-// Handles =XX hex sequences and =\n soft line breaks
 function cleanBodyText(text) {
   if (!text) return text;
-  // Only bother if it looks like it contains QP encoding
   if (!/=[0-9A-Fa-f]{2}|=\n/.test(text)) return text;
   return text
-    .replace(/=\r?\n/g, '')                                          // soft line breaks
-    .replace(/=([0-9A-Fa-f]{2})/g, (_, h) =>
-      String.fromCharCode(parseInt(h, 16))
-    )
+    .replace(/=\r?\n/g, '')
+    .replace(/=([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n');
 }
@@ -21,12 +17,12 @@ function cleanBodyText(text) {
 export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }) {
   const [showEM, setShowEM] = useState(false);
   const [emailPre, setEmailPre] = useState([]);
-  const [tab, setTab] = useState("sent"); // "sent" | "inbox"
+  const [tab, setTab] = useState("sent");
   const [log, setLog] = useState([]);
   const [inbox, setInbox] = useState([]);
   const [logLoading, setLogLoading] = useState(true);
   const [inboxLoading, setInboxLoading] = useState(true);
-  const [openMsg, setOpenMsg] = useState(null); // currently open inbox message
+  const [openMsg, setOpenMsg] = useState(null);
   const [showReply, setShowReply] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [replySending, setReplySending] = useState(false);
@@ -55,6 +51,19 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
   };
 
+  const deleteSent = async (e, id) => {
+    e.stopPropagation();
+    await fetch(`/api/email?id=${id}`, { method: "DELETE" });
+    setLog(prev => prev.filter(x => x.id !== id));
+  };
+
+  const deleteInbox = async (e, id) => {
+    e.stopPropagation();
+    await fetch(`/api/email/inbound?id=${id}`, { method: "DELETE" });
+    setInbox(prev => prev.filter(x => x.id !== id));
+    if (openMsg?.id === id) closeMsg();
+  };
+
   const noEmail = members.filter(m => m.status === "active" && !m.email).length;
   const unread = inbox.filter(m => !m.is_read).length;
 
@@ -69,7 +78,13 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
     border: active ? "1px solid #3b82f640" : "1px solid transparent",
   });
 
-  // Open an inbox message and mark it read
+  const trashBtn = (onClick) => ({
+    display: "flex", alignItems: "center", justifyContent: "center",
+    width: "28px", height: "28px", borderRadius: "6px", cursor: "pointer",
+    color: "#64748b", flexShrink: 0,
+    transition: "color 0.15s, background 0.15s",
+  });
+
   const openInboxMsg = async (msg) => {
     setOpenMsg(msg);
     setShowReply(false);
@@ -85,14 +100,9 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
   const sendReply = async () => {
     if (!replyText.trim() || !openMsg) return;
     setReplySending(true);
-
-    // Extract just the email address from "Name <email>" format
     const fromMatch = openMsg.from_address.match(/<(.+?)>/);
     const replyToEmail = fromMatch ? fromMatch[1] : openMsg.from_address;
-
-    // Find member by email so we can use the same POST /api/email endpoint
     const matchedMember = members.find(m => m.email?.toLowerCase() === replyToEmail.toLowerCase());
-
     try {
       let res;
       if (matchedMember) {
@@ -157,7 +167,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
         </div>
       </div>
 
-      {/* Warning if members missing emails */}
+      {/* Warning */}
       {noEmail > 0 && (
         <div style={{ background: "#78350f20", border: "1px solid #92400e", borderRadius: "10px", padding: "12px 16px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "10px" }}>
           <Icons.Alert />
@@ -168,17 +178,21 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
       {/* Open message detail view */}
       {openMsg && (
         <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", marginBottom: "16px", overflow: "hidden" }}>
-          {/* Header */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: "1px solid #334155", background: "#0f172a40" }}>
             <div style={{ color: "#f1f5f9", fontSize: "15px", fontWeight: "600" }}>{openMsg.subject}</div>
-            <div onClick={closeMsg} style={{ color: "#64748b", cursor: "pointer", fontSize: "18px", lineHeight: 1, padding: "2px 6px" }}>✕</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div
+                onClick={(e) => deleteInbox(e, openMsg.id)}
+                title="Delete"
+                style={{ ...trashBtn(), color: "#ef4444" }}
+              >🗑</div>
+              <div onClick={closeMsg} style={{ color: "#64748b", cursor: "pointer", fontSize: "18px", lineHeight: 1, padding: "2px 6px" }}>✕</div>
+            </div>
           </div>
-          {/* Meta */}
           <div style={{ padding: "12px 20px", borderBottom: "1px solid #1e293b", background: "#0f172a20" }}>
             <div style={{ color: "#94a3b8", fontSize: "13px", marginBottom: "2px" }}><span style={{ color: "#64748b" }}>From: </span>{openMsg.from_address}</div>
             <div style={{ color: "#64748b", fontSize: "12px" }}>{fmtDate(openMsg.received_at)}</div>
           </div>
-          {/* Body — decode any QP leftovers from old records */}
           <div style={{ padding: "20px", minHeight: "80px" }}>
             {openMsg.body_text ? (
               <pre style={{ color: "#cbd5e1", fontSize: "14px", lineHeight: "1.65", whiteSpace: "pre-wrap", margin: 0, fontFamily: "inherit" }}>
@@ -188,7 +202,6 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
               <div style={{ color: "#475569", fontSize: "13px", fontStyle: "italic" }}>No message body</div>
             )}
           </div>
-          {/* Reply area */}
           {showReply ? (
             <div style={{ padding: "16px 20px", borderTop: "1px solid #334155", background: "#0f172a30" }}>
               <textarea
@@ -198,10 +211,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
                 style={{ width: "100%", minHeight: "100px", background: "#0f172a", border: "1px solid #334155", borderRadius: "8px", color: "#f1f5f9", fontSize: "14px", padding: "10px 12px", resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
               />
               <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
-                <div
-                  onClick={sendReply}
-                  style={{ ...BTN("linear-gradient(135deg,#3b82f6,#6366f1)"), display: "flex", alignItems: "center", gap: "6px", opacity: replySending ? 0.6 : 1, pointerEvents: replySending ? "none" : "auto" }}
-                >
+                <div onClick={sendReply} style={{ ...BTN("linear-gradient(135deg,#3b82f6,#6366f1)"), display: "flex", alignItems: "center", gap: "6px", opacity: replySending ? 0.6 : 1, pointerEvents: replySending ? "none" : "auto" }}>
                   <Icons.Send />{replySending ? "Sending…" : "Send Reply"}
                 </div>
                 <div onClick={() => { setShowReply(false); setReplyText(""); }} style={{ ...BTN("#334155"), color: "#94a3b8" }}>Cancel</div>
@@ -209,10 +219,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
             </div>
           ) : (
             <div style={{ padding: "12px 20px", borderTop: "1px solid #334155" }}>
-              <div
-                onClick={() => setShowReply(true)}
-                style={{ ...BTN("#1e3a5f"), display: "inline-flex", alignItems: "center", gap: "6px", color: "#93c5fd", border: "1px solid #3b82f640" }}
-              >
+              <div onClick={() => setShowReply(true)} style={{ ...BTN("#1e3a5f"), display: "inline-flex", alignItems: "center", gap: "6px", color: "#93c5fd", border: "1px solid #3b82f640" }}>
                 ↩ Reply
               </div>
             </div>
@@ -220,7 +227,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
         </div>
       )}
 
-      {/* Inbox / Sent Tabs */}
+      {/* Tabs */}
       <div style={{ background: "#1e293b", borderRadius: "12px", border: "1px solid #334155" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #334155" }}>
           <div style={{ display: "flex", gap: "8px" }}>
@@ -232,10 +239,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
               )}
             </div>
           </div>
-          <div
-            onClick={() => { tab === "sent" ? loadLog() : loadInbox(); }}
-            style={{ color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "12px" }}
-          >
+          <div onClick={() => { tab === "sent" ? loadLog() : loadInbox(); }} style={{ color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "12px" }}>
             <Icons.Refresh />Refresh
           </div>
         </div>
@@ -248,23 +252,31 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
               ? <div style={{ padding: "32px", textAlign: "center", color: "#64748b", fontSize: "14px" }}>No emails sent yet</div>
               : <div>
                   {log.map((entry, i) => (
-                    <div key={entry.id} style={{ padding: "14px 20px", borderBottom: i < log.length - 1 ? "1px solid #334155" : "none", background: i % 2 === 0 ? "#0f172a20" : "transparent" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "6px" }}>
-                        <div style={{ color: "#f1f5f9", fontSize: "14px", fontWeight: "600" }}>{entry.subject}</div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0, marginLeft: "16px" }}>
-                          <div style={{ color: "#94a3b8", fontSize: "13px", whiteSpace: "nowrap" }}>{entry.recipient_count} recipient{entry.recipient_count !== 1 ? "s" : ""}</div>
-                          <div style={{ padding: "3px 10px", borderRadius: "99px", fontSize: "11px", fontWeight: "600", background: entry.status === "sent" ? "#06402020" : "#7f1d1d20", color: entry.status === "sent" ? "#34d399" : "#f87171", border: `1px solid ${entry.status === "sent" ? "#06402040" : "#7f1d1d40"}` }}>
-                            {entry.status === "sent" ? "Sent" : "Failed"}
+                    <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px 20px", borderBottom: i < log.length - 1 ? "1px solid #334155" : "none", background: i % 2 === 0 ? "#0f172a20" : "transparent" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "6px" }}>
+                          <div style={{ color: "#f1f5f9", fontSize: "14px", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.subject}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0, marginLeft: "12px" }}>
+                            <div style={{ color: "#94a3b8", fontSize: "13px", whiteSpace: "nowrap" }}>{entry.recipient_count} recipient{entry.recipient_count !== 1 ? "s" : ""}</div>
+                            <div style={{ padding: "3px 10px", borderRadius: "99px", fontSize: "11px", fontWeight: "600", background: entry.status === "sent" ? "#06402020" : "#7f1d1d20", color: entry.status === "sent" ? "#34d399" : "#f87171", border: `1px solid ${entry.status === "sent" ? "#06402040" : "#7f1d1d40"}` }}>
+                              {entry.status === "sent" ? "Sent" : "Failed"}
+                            </div>
                           </div>
                         </div>
+                        <div style={{ color: "#64748b", fontSize: "12px", marginBottom: entry.recipient_emails ? "4px" : 0 }}>{fmtDate(entry.sent_at)}</div>
+                        {entry.recipient_emails && (
+                          <div style={{ color: "#475569", fontSize: "12px", lineHeight: "1.5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <span style={{ color: "#64748b" }}>To: </span>{entry.recipient_emails}
+                          </div>
+                        )}
                       </div>
-                      <div style={{ color: "#64748b", fontSize: "12px", marginBottom: entry.recipient_emails ? "4px" : 0 }}>{fmtDate(entry.sent_at)}</div>
-                      {entry.recipient_emails && (
-                        <div style={{ color: "#475569", fontSize: "12px", lineHeight: "1.5" }}>
-                          <span style={{ color: "#64748b" }}>To: </span>
-                          {entry.recipient_emails}
-                        </div>
-                      )}
+                      <div
+                        onClick={(e) => deleteSent(e, entry.id)}
+                        title="Delete"
+                        style={{ ...trashBtn(), fontSize: "15px" }}
+                        onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                        onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
+                      >🗑</div>
                     </div>
                   ))}
                 </div>
@@ -281,21 +293,30 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
                     <div
                       key={msg.id}
                       onClick={() => openInboxMsg(msg)}
-                      style={{ padding: "14px 20px", borderBottom: i < inbox.length - 1 ? "1px solid #334155" : "none", background: openMsg?.id === msg.id ? "#3b82f615" : (!msg.is_read ? "#3b82f608" : "transparent"), cursor: "pointer", transition: "background 0.15s" }}
+                      style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px 20px", borderBottom: i < inbox.length - 1 ? "1px solid #334155" : "none", background: openMsg?.id === msg.id ? "#3b82f615" : (!msg.is_read ? "#3b82f608" : "transparent"), cursor: "pointer", transition: "background 0.15s" }}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "4px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          {!msg.is_read && <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#3b82f6", flexShrink: 0 }} />}
-                          <div style={{ color: !msg.is_read ? "#f1f5f9" : "#94a3b8", fontSize: "14px", fontWeight: !msg.is_read ? "600" : "400" }}>{msg.subject || "(no subject)"}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "4px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                            {!msg.is_read && <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#3b82f6", flexShrink: 0 }} />}
+                            <div style={{ color: !msg.is_read ? "#f1f5f9" : "#94a3b8", fontSize: "14px", fontWeight: !msg.is_read ? "600" : "400", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{msg.subject || "(no subject)"}</div>
+                          </div>
+                          <div style={{ color: "#64748b", fontSize: "11px", whiteSpace: "nowrap", marginLeft: "16px", flexShrink: 0 }}>{fmtDate(msg.received_at)}</div>
                         </div>
-                        <div style={{ color: "#64748b", fontSize: "11px", whiteSpace: "nowrap", marginLeft: "16px" }}>{fmtDate(msg.received_at)}</div>
+                        <div style={{ color: "#64748b", fontSize: "12px", marginBottom: "4px", paddingLeft: !msg.is_read ? "15px" : 0 }}>From: {msg.from_address}</div>
+                        {msg.body_text && (
+                          <div style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingLeft: !msg.is_read ? "15px" : 0 }}>
+                            {cleanBodyText(msg.body_text).replace(/\s+/g, " ").slice(0, 160)}{msg.body_text.length > 160 ? "…" : ""}
+                          </div>
+                        )}
                       </div>
-                      <div style={{ color: "#64748b", fontSize: "12px", marginBottom: "4px", paddingLeft: !msg.is_read ? "15px" : 0 }}>From: {msg.from_address}</div>
-                      {msg.body_text && (
-                        <div style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingLeft: !msg.is_read ? "15px" : 0 }}>
-                          {cleanBodyText(msg.body_text).replace(/\s+/g, " ").slice(0, 160)}{msg.body_text.length > 160 ? "…" : ""}
-                        </div>
-                      )}
+                      <div
+                        onClick={(e) => deleteInbox(e, msg.id)}
+                        title="Delete"
+                        style={{ ...trashBtn(), fontSize: "15px", flexShrink: 0 }}
+                        onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                        onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
+                      >🗑</div>
                     </div>
                   ))}
                 </div>
