@@ -2,7 +2,7 @@ import { getDb, ensureTables } from '../db';
 import { NextResponse } from 'next/server';
 
 // Public read-only endpoint for the member directory on seniormensclub.org
-// Returns active members only — name, email, phone, city, state
+// Returns active members - all info for password-protected directory
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -19,7 +19,7 @@ export async function GET() {
     const sql = getDb();
     await ensureTables(sql);
     const rows = await sql`
-      SELECT first_name, last_name, email, phone, city, state
+      SELECT first_name, last_name, email, phone, address1, address2, city, state, zip
       FROM members
       WHERE status = 'active'
       ORDER BY last_name, first_name
@@ -29,8 +29,11 @@ export async function GET() {
       lastName: r.last_name,
       email: r.email || '',
       phone: r.phone || '',
+      address1: r.address1 || '',
+      address2: r.address2 || '',
       city: r.city || '',
       state: r.state || '',
+      zip: r.zip || '',
     }));
     return NextResponse.json(members, { headers: CORS_HEADERS });
   } catch (e) {
