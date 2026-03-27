@@ -130,6 +130,31 @@ function ReplyEditor({ onChange }) {
   return <div ref={containerRef} />;
 }
 
+// Renders stored Quill HTML safely in the dark UI
+function SentBodyPreview({ html }) {
+  if (!html) return <div style={{ color: "#475569", fontSize: "13px", fontStyle: "italic" }}>No message body stored.</div>;
+
+  // Convert the Quill HTML to plain text for display in the dark UI
+  // (avoids iframe/dangerouslySetInnerHTML security concerns)
+  const plainText = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<li>/gi, "• ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return (
+    <div style={{ color: "#cbd5e1", fontSize: "14px", lineHeight: "1.7", whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
+      {plainText}
+    </div>
+  );
+}
+
 export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }) {
   const [showEM, setShowEM] = useState(false);
   const [emailPre, setEmailPre] = useState([]);
@@ -140,8 +165,8 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
   const [logLoading, setLogLoading] = useState(true);
   const [inboxLoading, setInboxLoading] = useState(true);
   const [trashLoading, setTrashLoading] = useState(false);
-  const [openMsg, setOpenMsg] = useState(null);   // inbox message detail
-  const [openSent, setOpenSent] = useState(null); // sent email detail
+  const [openMsg, setOpenMsg] = useState(null);
+  const [openSent, setOpenSent] = useState(null);
   const [replyMode, setReplyMode] = useState(null);
   const [replyHtml, setReplyHtml] = useState("");
   const [replySending, setReplySending] = useState(false);
@@ -372,7 +397,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
         <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", marginBottom: "16px", overflow: "hidden" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: "1px solid #334155", background: "#0f172a40" }}>
             <div style={{ color: "#f1f5f9", fontSize: "15px", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{openSent.subject}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "12px", flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "12px", flexShrink: 0 }}>
               <div style={{ padding: "3px 10px", borderRadius: "99px", fontSize: "11px", fontWeight: "600", background: openSent.status === "sent" ? "#06402020" : "#7f1d1d20", color: openSent.status === "sent" ? "#34d399" : "#f87171", border: `1px solid ${openSent.status === "sent" ? "#06402040" : "#7f1d1d40"}` }}>
                 {openSent.status === "sent" ? "Sent" : "Failed"}
               </div>
@@ -389,8 +414,8 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
             )}
             <div style={{ color: "#64748b", fontSize: "12px" }}>{fmtDate(openSent.sent_at)}</div>
           </div>
-          <div style={{ padding: "16px 20px", color: "#64748b", fontSize: "13px", fontStyle: "italic" }}>
-            Message content is not stored after sending. View the original in your email client.
+          <div style={{ padding: "20px", minHeight: "60px" }}>
+            <SentBodyPreview html={openSent.body_html} />
           </div>
         </div>
       )}
