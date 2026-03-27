@@ -56,7 +56,16 @@ const QUILL_TOOLBAR = [
   ["clean"],
 ];
 
+// Set min-height on the editor area safely
+function setQuillMinHeight(q, minHeight) {
+  // q.root is the .ql-editor div
+  q.root.style.minHeight = minHeight;
+  // q.root.parentElement is the .ql-container div
+  if (q.root.parentElement) q.root.parentElement.style.minHeight = minHeight;
+}
+
 // ─── StaticRichEditor ─────────────────────────────────────────────────────────
+// Used in template editing. Reads initialHtml once on mount, never re-syncs.
 function StaticRichEditor({ initialHtml, onChange, minHeight = "260px" }) {
   const containerRef = useRef(null);
   const initialRef = useRef(initialHtml);
@@ -73,8 +82,7 @@ function StaticRichEditor({ initialHtml, onChange, minHeight = "260px" }) {
         modules: { toolbar: QUILL_TOOLBAR },
       });
       containerRef.current.__quill = q;
-      q.root.style.minHeight = minHeight;
-      q.container.querySelector(".ql-container").style.minHeight = minHeight;
+      setQuillMinHeight(q, minHeight);
       if (initialRef.current) q.root.innerHTML = initialRef.current;
       q.on("text-change", () => {
         const html = q.root.innerHTML;
@@ -88,8 +96,8 @@ function StaticRichEditor({ initialHtml, onChange, minHeight = "260px" }) {
 }
 
 // ─── ControlledRichEditor ─────────────────────────────────────────────────────
-// Exposes a ref so the parent can read innerHTML directly at send time,
-// eliminating the race where body state lags behind what the user typed.
+// Used in compose modal. Syncs from value when templates are applied.
+// Exposes editorRef so parent can read innerHTML directly at send time.
 function ControlledRichEditor({ value, onChange, editorRef, minHeight = "180px" }) {
   const containerRef = useRef(null);
   const quillRef = useRef(null);
@@ -104,10 +112,8 @@ function ControlledRichEditor({ value, onChange, editorRef, minHeight = "180px" 
         modules: { toolbar: QUILL_TOOLBAR },
       });
       quillRef.current = q;
-      q.root.style.minHeight = minHeight;
-      q.container.querySelector(".ql-container").style.minHeight = minHeight;
+      setQuillMinHeight(q, minHeight);
       if (value) q.root.innerHTML = value;
-      // Expose Quill instance to parent via ref
       if (editorRef) editorRef.current = q;
       q.on("text-change", () => {
         const html = q.root.innerHTML;
@@ -271,8 +277,7 @@ export function EmailModal({ members, pre, lists = [], onClose, onSend, onListSa
   const [savingList, setSavingList] = useState(false);
   const [saveListErr, setSaveListErr] = useState("");
 
-  // Direct ref to the Quill instance — lets us read innerHTML at send time
-  // without depending on the body state having synced yet
+  // Direct ref to Quill — read innerHTML at send time, bypassing stale state
   const quillEditorRef = useRef(null);
 
   const loadTemplates = useCallback(() => {
@@ -299,11 +304,9 @@ export function EmailModal({ members, pre, lists = [], onClose, onSend, onListSa
 
   const doSend = async () => {
     if (!sel.length || !subj) return;
-    // Read body directly from Quill at send time — avoids stale state
     const quill = quillEditorRef.current;
     const liveHtml = quill ? (quill.root.innerHTML === "<p><br></p>" ? "" : quill.root.innerHTML) : body;
     if (!liveHtml) return;
-
     setSending(true); setErr("");
     const plainText = liveHtml
       .replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<li>/gi, "- ")
@@ -323,7 +326,6 @@ export function EmailModal({ members, pre, lists = [], onClose, onSend, onListSa
   };
 
   const fil = members.filter(m => !rs || ((m.firstName + " " + m.lastName + " " + m.email).toLowerCase().includes(rs.toLowerCase())));
-  // ok: require recipients and subject; body check uses state as a hint but doSend reads live from Quill
   const ok = sel.length > 0 && subj.trim().length > 0;
 
   return (
