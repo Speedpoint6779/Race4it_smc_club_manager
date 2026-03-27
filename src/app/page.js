@@ -225,7 +225,7 @@ export default function App(){
 
   const today=new Date().toISOString().split("T")[0];
   const fsp=speakers.filter(s=>{if(spFil==="upcoming")return s.date>=today;if(spFil==="past")return s.date<today;if(spFil==="open")return s.date>=today&&!s.noMeeting&&!s.speaker;return true});
-  const nextSp=speakers.find(s=>s.date>=today&&!s.noMeeting&&s.speaker);
+  const nextSpeakers=speakers.filter(s=>s.date>=today&&!s.noMeeting&&s.speaker).slice(0,3);
   const openSlots=speakers.filter(s=>s.date>=today&&!s.noMeeting&&!s.speaker).length;
 
   const navItems=[{id:"dashboard",label:"Dashboard",icon:Icons.Home},{id:"members",label:"Members",icon:Icons.Users},{id:"speakers",label:"Speakers",icon:Icons.Mic},{id:"email",label:"Email",icon:Icons.Mail},{id:"payments",label:"Payments",icon:Icons.Dollar},{id:"users",label:"Users",icon:Icons.Gear}];
@@ -248,9 +248,27 @@ export default function App(){
 
         {pg==="dashboard"&&<div>
           <h1 style={{color:"#f1f5f9",fontSize:"24px",fontWeight:"700",margin:"0 0 24px"}}>Dashboard</h1>
-          <div style={{display:"flex",gap:"16px",flexWrap:"wrap",marginBottom:"32px"}}><Stat icon={Icons.Users} label="Total Members" value={members.length} color="#3b82f6" sub={ac+" active"}/><Stat icon={Icons.Check} label="Dues Paid" value={pc} color="#34d399" sub={"of "+ac+" active"}/><Stat icon={Icons.Alert} label="Overdue" value={oc} color="#f87171" sub={oc>0?"needs attention":"all clear"}/><Stat icon={Icons.Mic} label="Open Slots" value={openSlots} color="#a78bfa" sub="upcoming"/></div>
+          <div style={{display:"flex",gap:"16px",flexWrap:"wrap",marginBottom:"32px"}}><Stat icon={Icons.Users} label="Total Members" value={members.length} color="#3b82f6" sub={ac+" active"}/><Stat icon={Icons.Check} label="Dues Paid" value={pc} color="#34d399" sub={"of "+ac+" active"}/><Stat icon={Icons.Alert} label="Overdue" value={oc} color="#f87171" sub={oc>0?"needs attention":"all clear"}/><Stat icon={Icons.Mic} label="Open Speaker Slots" value={openSlots} color="#a78bfa" sub="upcoming"/></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"16px"}}>
-            <div style={{background:"#1e293b",borderRadius:"12px",border:"1px solid #334155",padding:"20px"}}><h3 style={{color:"#f1f5f9",fontSize:"15px",fontWeight:"600",margin:"0 0 16px"}}>Next Speaker</h3>{nextSp?<div style={{background:"#0f172a",borderRadius:"8px",padding:"16px",border:"1px solid #334155"}}><div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}><Icons.Cal/><span style={{color:"#93c5fd",fontSize:"14px",fontWeight:"600"}}>{fmtDate(nextSp.date)}</span></div><div style={{color:"#f1f5f9",fontSize:"16px",fontWeight:"600",marginBottom:"4px"}}>{nextSp.speaker}</div><div style={{color:"#94a3b8",fontSize:"13px"}}>{nextSp.title}{nextSp.org?", "+nextSp.org:""}</div><div style={{color:"#cbd5e1",fontSize:"13px",marginTop:"8px",fontStyle:"italic"}}>{nextSp.topic}</div></div>:<p style={{color:"#64748b",fontSize:"14px"}}>No upcoming speakers</p>}</div>
+            <div style={{background:"#1e293b",borderRadius:"12px",border:"1px solid #334155",padding:"20px"}}>
+              <h3 style={{color:"#f1f5f9",fontSize:"15px",fontWeight:"600",margin:"0 0 16px"}}>Next Speakers</h3>
+              {nextSpeakers.length>0?
+                <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+                  {nextSpeakers.map((sp,idx)=>(
+                    <div key={sp.id} style={{background:"#0f172a",borderRadius:"8px",padding:"14px",border:"1px solid #334155"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}}>
+                        <Icons.Cal/>
+                        <span style={{color:"#93c5fd",fontSize:"13px",fontWeight:"600"}}>{fmtDate(sp.date)}</span>
+                        {idx===0&&<span style={{fontSize:"10px",padding:"2px 6px",borderRadius:"99px",background:"#3b82f630",color:"#93c5fd",fontWeight:"600"}}>NEXT</span>}
+                      </div>
+                      <div style={{color:"#f1f5f9",fontSize:"15px",fontWeight:"600",marginBottom:"2px"}}>{sp.speaker}</div>
+                      <div style={{color:"#94a3b8",fontSize:"12px"}}>{sp.title}{sp.org?", "+sp.org:""}</div>
+                      {sp.topic&&<div style={{color:"#cbd5e1",fontSize:"12px",marginTop:"4px",fontStyle:"italic"}}>{sp.topic}</div>}
+                    </div>
+                  ))}
+                </div>
+              :<p style={{color:"#64748b",fontSize:"14px"}}>No upcoming speakers</p>}
+            </div>
             <div style={{background:"#1e293b",borderRadius:"12px",border:"1px solid #334155",padding:"20px"}}><h3 style={{color:"#f1f5f9",fontSize:"15px",fontWeight:"600",margin:"0 0 16px"}}>Unpaid Members</h3>{mwd.filter(m=>m._ds!=="paid"&&m.status==="active").length===0?<p style={{color:"#64748b",fontSize:"14px"}}>All paid up!</p>:<div style={{display:"flex",flexDirection:"column",gap:"6px",maxHeight:"340px",overflowY:"auto"}}>{mwd.filter(m=>m._ds!=="paid"&&m.status==="active").map(m=><div key={m.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"#0f172a",borderRadius:"8px",flexShrink:0}}><span style={{color:"#cbd5e1",fontSize:"13px"}}>{m.firstName} {m.lastName}</span><DuesBadge status={m._ds}/></div>)}</div>}</div>
           </div>
         </div>}
@@ -298,7 +316,7 @@ export default function App(){
           <div style={{display:"flex",gap:"12px",marginBottom:"20px"}}>{[["upcoming","Upcoming"],["open","Open Slots ("+openSlots+")"],["all","All"],["past","Past"]].map(([k,l])=><div key={k} onClick={()=>setSpFil(k)} style={{padding:"10px 16px",border:"1px solid",borderRadius:"8px",fontSize:"13px",cursor:"pointer",fontWeight:"500",background:spFil===k?"#3b82f620":"#1e293b",borderColor:spFil===k?"#3b82f6":"#334155",color:spFil===k?"#93c5fd":"#94a3b8"}}>{l}</div>)}</div>
           <div style={{background:"#1e293b",borderRadius:"12px",border:"1px solid #334155",overflow:"hidden"}}>
             <div style={{display:"grid",gridTemplateColumns:sCols,borderBottom:"1px solid #334155"}}>{["Date","Speaker","Organization","Title","Topic","Recruited By",""].map(h=><div key={h} style={HS}>{h}</div>)}</div>
-            {fsp.map((s,i)=>{const past=s.date<today,isNext=nextSp&&s.id===nextSp.id;
+            {fsp.map((s,i)=>{const past=s.date<today,isNext=nextSpeakers.length>0&&s.id===nextSpeakers[0].id;
               if(s.noMeeting) return <div key={s.id} style={{display:"grid",gridTemplateColumns:"90px 1fr 70px",borderBottom:i<fsp.length-1?"1px solid #334155":"none",background:"#7f1d1d10",opacity:past?0.6:1,alignItems:"center"}}>
                 <div style={{padding:"12px 14px"}}><span style={{color:"#f1f5f9",fontSize:"14px",fontWeight:"500"}}>{fmtDate(s.date)}</span></div>
                 <div style={{padding:"12px 14px",color:"#f87171",fontSize:"13px",fontWeight:"600",fontStyle:"italic",textAlign:"center"}}>{"NO MEETING -- "+s.reason}</div>
