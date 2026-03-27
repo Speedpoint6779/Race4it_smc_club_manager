@@ -3,7 +3,8 @@ import { Resend } from 'resend';
 import { getDb, ensureTables } from '../db';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM = process.env.EMAIL_FROM || 'SMC Club Manager <noreply@seniormensclub.org>';
+const FROM     = process.env.EMAIL_FROM     || 'SMC Club Manager <club@seniormensclub.org>';
+const REPLY_TO = process.env.EMAIL_REPLY_TO || 'club@seniormensclub.org';
 
 // GET /api/email — fetch sent email log
 export async function GET() {
@@ -57,8 +58,10 @@ export async function POST(req) {
     }));
 
     // Send via Resend — one email with BCC to protect privacy
+    // reply_to set so member replies come back to the club inbox
     const { data, error } = await resend.emails.send({
       from: FROM,
+      reply_to: REPLY_TO,
       to: [FROM],
       bcc: toAddresses.map(t => `${t.name} <${t.email}>`),
       subject,
@@ -75,7 +78,6 @@ export async function POST(req) {
     });
 
     if (error) {
-      // Log failure
       await sql`
         INSERT INTO email_log (subject, recipient_count, recipient_emails, status, error)
         VALUES (${subject}, ${members.length}, ${members.map(m => m.email).join(', ')}, 'failed', ${error.message})
@@ -83,7 +85,6 @@ export async function POST(req) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Log success
     await sql`
       INSERT INTO email_log (subject, recipient_count, recipient_emails, status)
       VALUES (${subject}, ${members.length}, ${members.map(m => m.email).join(', ')}, 'sent')
