@@ -56,6 +56,7 @@ export async function ensureTables(sql) {
       subject TEXT NOT NULL,
       recipient_count INTEGER NOT NULL DEFAULT 0,
       recipient_emails TEXT DEFAULT '',
+      body_html TEXT DEFAULT '',
       sent_at TIMESTAMP DEFAULT NOW(),
       status TEXT DEFAULT 'sent',
       error TEXT DEFAULT '',
@@ -98,6 +99,7 @@ export async function ensureTables(sql) {
 
   // Safe migrations
   await sql`ALTER TABLE email_log ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT false`;
+  await sql`ALTER TABLE email_log ADD COLUMN IF NOT EXISTS body_html TEXT DEFAULT ''`;
   await sql`ALTER TABLE inbox_messages ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT false`;
 
   // Seed default templates if table is empty
