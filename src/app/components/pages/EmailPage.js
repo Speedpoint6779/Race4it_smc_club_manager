@@ -3,6 +3,21 @@ import { BTN } from "../ui";
 import { EmailModal } from "../EmailModal";
 import { useState, useEffect, useCallback } from "react";
 
+// Client-side fallback: decode any quoted-printable that slipped into stored body_text
+// Handles =XX hex sequences and =\n soft line breaks
+function cleanBodyText(text) {
+  if (!text) return text;
+  // Only bother if it looks like it contains QP encoding
+  if (!/=[0-9A-Fa-f]{2}|=\n/.test(text)) return text;
+  return text
+    .replace(/=\r?\n/g, '')                                          // soft line breaks
+    .replace(/=([0-9A-Fa-f]{2})/g, (_, h) =>
+      String.fromCharCode(parseInt(h, 16))
+    )
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+}
+
 export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }) {
   const [showEM, setShowEM] = useState(false);
   const [emailPre, setEmailPre] = useState([]);
@@ -91,7 +106,6 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
           }),
         });
       } else {
-        // Non-member reply — send via a direct send endpoint
         res = await fetch("/api/email/reply", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -164,11 +178,11 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
             <div style={{ color: "#94a3b8", fontSize: "13px", marginBottom: "2px" }}><span style={{ color: "#64748b" }}>From: </span>{openMsg.from_address}</div>
             <div style={{ color: "#64748b", fontSize: "12px" }}>{fmtDate(openMsg.received_at)}</div>
           </div>
-          {/* Body */}
+          {/* Body — decode any QP leftovers from old records */}
           <div style={{ padding: "20px", minHeight: "80px" }}>
             {openMsg.body_text ? (
               <pre style={{ color: "#cbd5e1", fontSize: "14px", lineHeight: "1.65", whiteSpace: "pre-wrap", margin: 0, fontFamily: "inherit" }}>
-                {openMsg.body_text}
+                {cleanBodyText(openMsg.body_text)}
               </pre>
             ) : (
               <div style={{ color: "#475569", fontSize: "13px", fontStyle: "italic" }}>No message body</div>
@@ -279,7 +293,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
                       <div style={{ color: "#64748b", fontSize: "12px", marginBottom: "4px", paddingLeft: !msg.is_read ? "15px" : 0 }}>From: {msg.from_address}</div>
                       {msg.body_text && (
                         <div style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingLeft: !msg.is_read ? "15px" : 0 }}>
-                          {msg.body_text.replace(/\s+/g, " ").slice(0, 160)}{msg.body_text.length > 160 ? "…" : ""}
+                          {cleanBodyText(msg.body_text).replace(/\s+/g, " ").slice(0, 160)}{msg.body_text.length > 160 ? "…" : ""}
                         </div>
                       )}
                     </div>
