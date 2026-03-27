@@ -15,14 +15,32 @@ import { PaymentsPage } from "./components/pages/PaymentsPage";
 import { UsersPage } from "./components/pages/UsersPage";
 
 export default function App() {
-  const [user, setUser] = useState(null);
+  // Restore session from sessionStorage so page refresh doesn't log you out
+  const [user, setUser] = useState(() => {
+    try { return sessionStorage.getItem("smc_user") || null; } catch { return null; }
+  });
+  const [pg, setPg] = useState(() => {
+    try { return sessionStorage.getItem("smc_pg") || "dashboard"; } catch { return "dashboard"; }
+  });
+
   const [un, setUn] = useState(""); const [pw, setPw] = useState(""); const [le, setLe] = useState("");
-  const [pg, setPg] = useState("dashboard");
   const [members, setMembers] = useState([]); const [speakers, setSpeakers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [appUsers, setAppUsers] = useState([]);
   const [toast, setToast] = useState(null);
   const [selMode, setSelMode] = useState(false); const [sel, setSel] = useState([]);
+
+  // Persist user + current page to sessionStorage
+  useEffect(() => {
+    try {
+      if (user) sessionStorage.setItem("smc_user", user);
+      else sessionStorage.removeItem("smc_user");
+    } catch {}
+  }, [user]);
+
+  useEffect(() => {
+    try { sessionStorage.setItem("smc_pg", pg); } catch {}
+  }, [pg]);
 
   useEffect(() => {
     fetch("/api/members").then(r => r.json()).then(data => {
@@ -37,6 +55,7 @@ export default function App() {
   }, []);
 
   const flash = useCallback(m => { setToast(m); setTimeout(() => setToast(null), 3000); }, []);
+
   const login = async () => {
     if (!un.trim() || !pw.trim()) { setLe("Please enter username and password"); return; }
     try {
@@ -44,6 +63,11 @@ export default function App() {
       const d = await r.json();
       if (r.ok) { setUser(d.name); setLe(""); } else { setLe(d.error || "Invalid credentials"); }
     } catch (e) { setLe("Login failed"); }
+  };
+
+  const logout = () => {
+    setUser(null); setUn(""); setPw("");
+    try { sessionStorage.removeItem("smc_user"); sessionStorage.removeItem("smc_pg"); } catch {}
   };
 
   const mwd = useMemo(() => members.map(m => ({ ...m, _ds: getDuesStatus(m), _nd: getNextDue(m) })), [members]);
@@ -117,17 +141,17 @@ export default function App() {
               <div style={{ color: "#cbd5e1", fontSize: "13px", fontWeight: "500" }}>{user}</div>
               <div style={{ color: "#64748b", fontSize: "11px" }}>Officer</div>
             </div>
-            <div onClick={() => { setUser(null); setUn(""); setPw(""); }} style={{ color: "#64748b", cursor: "pointer", padding: "4px" }}><Icons.LogOut /></div>
+            <div onClick={logout} style={{ color: "#64748b", cursor: "pointer", padding: "4px" }}><Icons.LogOut /></div>
           </div>
         </div>
       </div>
 
-      {/* Main — each page lives in its own file under components/pages/ */}
+      {/* Main */}
       <div style={{ flex: 1, overflow: "auto", padding: "32px" }}>
         {pg === "dashboard" && <DashboardPage members={members} mwd={mwd} speakers={speakers} ac={ac} pc={pc} oc={oc} />}
         {pg === "members"   && <MembersPage mwd={mwd} members={members} setMembers={setMembers} flash={flash} />}
         {pg === "speakers"  && <SpeakersPage speakers={speakers} setSpeakers={setSpeakers} flash={flash} />}
-        {pg === "email"     && <EmailPage members={members} mwd={mwd} ac={ac} setPg={setPg} setSelMode={setSelMode} setSel={setSel} />}
+        {pg === "email"     && <EmailPage members={members} mwd={mwd} ac={ac} setPg={setPg} setSelMode={setSelMode} setSel={setSel} flash={flash} />}
         {pg === "payments"  && <PaymentsPage mwd={mwd} members={members} setMembers={setMembers} ac={ac} pc={pc} oc={oc} flash={flash} />}
         {pg === "users"     && <UsersPage appUsers={appUsers} setAppUsers={setAppUsers} flash={flash} />}
       </div>
