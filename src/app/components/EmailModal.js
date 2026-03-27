@@ -56,23 +56,54 @@ const QUILL_TOOLBAR = [
   ["clean"],
 ];
 
-/**
- * RichEditor — two modes:
- *
- * 1. "Controlled" (compose): pass `value` + `onChange`.
- *    - Quill starts with `value` as initial content.
- *    - When `value` changes externally (template applied), the editor content is updated.
- *
- * 2. "Uncontrolled" (template editor): pass `initialValue` + `onChange`.
- *    - Quill starts with `initialValue` on mount. Never re-synced from outside.
- *    - Avoids the race condition where setting state then remounting the editor
- *      loses the initial content because the useEffect runs before innerHTML is set.
- */
-function RichEditor({ value, initialValue, onChange, minHeight = "180px" }) {
+// ─── StaticRichEditor ─────────────────────────────────────────────────────────
+// Used in the template manager. Receives a fixed `initialHtml` string that is
+// set into Quill exactly once on mount. Never re-syncs from outside — changes
+// are reported via `onChange`. Completely avoids the React state batch race.
+function StaticRichEditor({ initialHtml, onChange, minHeight = "260px" }) {
+  const containerRef = useRef(null);
+  // Hold the initial html in a ref so the useEffect closure always has it
+  const initialRef = useRef(initialHtml);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadQuill().then(() => {
+      if (cancelled || !containerRef.current) return;
+      // Destroy any previous Quill instance on this container
+      const existing = containerRef.current.__quill;
+      if (existing) { existing.off("text-change"); }
+
+      const q = new window.Quill(containerRef.current, {
+        theme: "snow",
+        placeholder: "Write your message here...",
+        modules: { toolbar: QUILL_TOOLBAR },
+      });
+      containerRef.current.__quill = q;
+      q.root.style.minHeight = minHeight;
+      q.container.querySelector(".ql-container").style.minHeight = minHeight;
+
+      // Set content directly — initialRef.current is stable, no race
+      if (initialRef.current) {
+        q.root.innerHTML = initialRef.current;
+      }
+
+      q.on("text-change", () => {
+        const html = q.root.innerHTML;
+        onChange(html === "<p><br></p>" ? "" : html);
+      });
+    });
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return <div ref={containerRef} />;
+}
+
+// ─── ControlledRichEditor ─────────────────────────────────────────────────────
+// Used in the compose modal. Starts with `value`, and re-syncs when `value`
+// changes externally (e.g. when a template is applied).
+function ControlledRichEditor({ value, onChange, minHeight = "180px" }) {
   const containerRef = useRef(null);
   const quillRef = useRef(null);
-  // Capture the starting content once — stable ref so useEffect dep array stays clean
-  const startContent = useRef(initialValue !== undefined ? initialValue : (value || ""));
 
   useEffect(() => {
     let cancelled = false;
@@ -86,8 +117,7 @@ function RichEditor({ value, initialValue, onChange, minHeight = "180px" }) {
       quillRef.current = q;
       q.root.style.minHeight = minHeight;
       q.container.querySelector(".ql-container").style.minHeight = minHeight;
-      // Set initial content immediately on mount — no timing issues
-      if (startContent.current) q.root.innerHTML = startContent.current;
+      if (value) q.root.innerHTML = value;
       q.on("text-change", () => {
         const html = q.root.innerHTML;
         onChange(html === "<p><br></p>" ? "" : html);
@@ -96,64 +126,34 @@ function RichEditor({ value, initialValue, onChange, minHeight = "180px" }) {
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Only sync external `value` changes in controlled mode (template applied in compose)
+  // Sync when value changes externally (template applied)
   useEffect(() => {
-    if (initialValue !== undefined) return; // uncontrolled — never sync
     if (!quillRef.current || value === undefined) return;
     const cur = quillRef.current.root.innerHTML;
-    const curNorm = cur === "<p><br></p>" ? "" : cur;
-    if (curNorm !== value) {
+    if ((cur === "<p><br></p>" ? "" : cur) !== value) {
       quillRef.current.root.innerHTML = value || "";
     }
-  }, [value, initialValue]);
+  }, [value]);
 
   return <div ref={containerRef} />;
 }
 
-// ─── Template Manager ────────────────────────────────────────────────────────
-function TemplateManager({ onClose, onChanged }) {
-  const [templates, setTemplates] = useState([]);
-  const [view, setView] = useState("list"); // "list" | "edit" | "new"
-  const [editing, setEditing] = useState(null);
-  const [name, setName] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+// ─── Template Editor Form ─────────────────────────────────────────────────────
+// Separate component so it fully unmounts/remounts when switching templates.
+// This guarantees StaticRichEditor always mounts with the correct initialHtml.
+function TemplateEditorForm({ template, onSave, onBack }) {
+  const [name, setName] = useState(template?.name || "");
+  const [subject, setSubject] = useState(template?.subject || "");
+  const [body, setBody] = useState(template?.body_html || "");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-  // editorKey forces a full remount of RichEditor when switching between templates
-  const [editorKey, setEditorKey] = useState(0);
-
-  const load = useCallback(() => {
-    fetch("/api/templates").then(r => r.json()).then(d => { if (Array.isArray(d)) setTemplates(d); });
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const openEdit = (t) => {
-    setEditing(t);
-    setName(t.name);
-    setSubject(t.subject);
-    setBody(t.body_html || "");
-    setErr("");
-    setEditorKey(k => k + 1); // remount editor so it picks up new initialValue
-    setView("edit");
-  };
-
-  const openNew = () => {
-    setEditing(null);
-    setName(""); setSubject(""); setBody(""); setErr("");
-    setEditorKey(k => k + 1);
-    setView("new");
-  };
-
-  const back = () => { setView("list"); setErr(""); };
 
   const save = async () => {
     if (!name.trim() || !subject.trim()) { setErr("Name and subject are required."); return; }
     setSaving(true); setErr("");
     try {
-      const url = editing ? `/api/templates?id=${editing.id}` : "/api/templates";
-      const method = editing ? "PATCH" : "POST";
+      const url = template ? `/api/templates?id=${template.id}` : "/api/templates";
+      const method = template ? "PATCH" : "POST";
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
@@ -161,37 +161,88 @@ function TemplateManager({ onClose, onChanged }) {
       });
       const data = await res.json();
       if (!res.ok) { setErr(data.error || "Save failed"); setSaving(false); return; }
-      load(); onChanged(); setView("list");
+      onSave();
     } catch { setErr("Network error"); }
     setSaving(false);
   };
+
+  return (
+    <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+      <div>
+        <label style={LS}>Template Name *</label>
+        <input style={IS} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Dues Reminder" />
+      </div>
+      <div>
+        <label style={LS}>Email Subject *</label>
+        <input style={IS} value={subject} onChange={e => setSubject(e.target.value)} placeholder="e.g. Annual Dues Reminder — Senior Men's Club" />
+      </div>
+      <div>
+        <label style={{ ...LS, display: "block", marginBottom: "6px" }}>Message Body</label>
+        <p style={{ color: "#64748b", fontSize: "12px", margin: "0 0 8px 0" }}>
+          Use the toolbar to format your message. What you see here is exactly how recipients will see it.
+        </p>
+        <StaticRichEditor
+          initialHtml={template?.body_html || ""}
+          onChange={setBody}
+          minHeight="260px"
+        />
+      </div>
+      {err && <div style={{ color: "#f87171", fontSize: "13px" }}>{err}</div>}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", paddingTop: "4px" }}>
+        <div onClick={onBack} style={BTN("#334155", "#cbd5e1")}>Cancel</div>
+        <div onClick={save} style={{ ...BTN("linear-gradient(135deg,#3b82f6,#6366f1)"), opacity: saving ? 0.6 : 1, pointerEvents: saving ? "none" : "auto" }}>
+          {saving ? "Saving…" : "Save Template"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Template Manager ─────────────────────────────────────────────────────────
+function TemplateManager({ onClose, onChanged }) {
+  const [templates, setTemplates] = useState([]);
+  // editTarget: null = list view, false = new, object = editing that template
+  const [editTarget, setEditTarget] = useState(null);
+
+  const load = useCallback(() => {
+    fetch("/api/templates").then(r => r.json()).then(d => { if (Array.isArray(d)) setTemplates(d); });
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const del = async (id) => {
     await fetch(`/api/templates?id=${id}`, { method: "DELETE" });
     load(); onChanged();
   };
 
-  const isEditing = view === "edit" || view === "new";
+  const handleSaved = () => {
+    load(); onChanged(); setEditTarget(null);
+  };
+
+  const isEditing = editTarget !== null;
+  const editingName = editTarget ? editTarget.name : "New Template";
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: "20px" }}>
       <div style={{ background: "#1e293b", borderRadius: "16px", border: "1px solid #334155", width: "100%", maxWidth: "700px", maxHeight: "90vh", overflow: "auto" }}>
+        {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 24px", borderBottom: "1px solid #334155" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             {isEditing && (
-              <div onClick={back} style={{ color: "#64748b", cursor: "pointer", fontSize: "13px" }}>← Back</div>
+              <div onClick={() => setEditTarget(null)} style={{ color: "#64748b", cursor: "pointer", fontSize: "13px" }}>← Back</div>
             )}
             <h2 style={{ color: "#f1f5f9", fontSize: "17px", fontWeight: "600", margin: 0 }}>
-              {view === "list" ? "Email Templates" : view === "new" ? "New Template" : `Edit: ${editing?.name}`}
+              {isEditing ? editingName : "Email Templates"}
             </h2>
           </div>
           <div onClick={onClose} style={{ color: "#94a3b8", cursor: "pointer", padding: "4px" }}><Icons.X /></div>
         </div>
 
-        {view === "list" && (
+        {/* List view */}
+        {!isEditing && (
           <div style={{ padding: "20px 24px" }}>
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
-              <div onClick={openNew} style={{ ...BTN("linear-gradient(135deg,#3b82f6,#6366f1)"), display: "flex", alignItems: "center", gap: "6px" }}>
+              <div onClick={() => setEditTarget(false)} style={{ ...BTN("linear-gradient(135deg,#3b82f6,#6366f1)"), display: "flex", alignItems: "center", gap: "6px" }}>
                 <Icons.Plus />New Template
               </div>
             </div>
@@ -205,7 +256,7 @@ function TemplateManager({ onClose, onChanged }) {
                       <div style={{ color: "#f1f5f9", fontSize: "14px", fontWeight: "600", marginBottom: "3px" }}>{t.name}</div>
                       <div style={{ color: "#64748b", fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.subject}</div>
                     </div>
-                    <div onClick={() => openEdit(t)} style={{ ...BTN("#1e3a5f"), fontSize: "12px", padding: "6px 14px", color: "#93c5fd", border: "1px solid #3b82f640", whiteSpace: "nowrap" }}>Edit</div>
+                    <div onClick={() => setEditTarget(t)} style={{ ...BTN("#1e3a5f"), fontSize: "12px", padding: "6px 14px", color: "#93c5fd", border: "1px solid #3b82f640", whiteSpace: "nowrap" }}>Edit</div>
                     <div onClick={() => del(t.id)} style={{ padding: "7px 9px", borderRadius: "6px", cursor: "pointer", color: "#ef4444", background: "#ef444415", flexShrink: 0 }}>
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                     </div>
@@ -216,44 +267,21 @@ function TemplateManager({ onClose, onChanged }) {
           </div>
         )}
 
+        {/* Edit/New view — key prop ensures full remount for each template */}
         {isEditing && (
-          <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
-            <div>
-              <label style={LS}>Template Name *</label>
-              <input style={IS} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Dues Reminder" />
-            </div>
-            <div>
-              <label style={LS}>Email Subject *</label>
-              <input style={IS} value={subject} onChange={e => setSubject(e.target.value)} placeholder="e.g. Annual Dues Reminder — Senior Men's Club" />
-            </div>
-            <div>
-              <label style={{ ...LS, display: "block", marginBottom: "6px" }}>Message Body</label>
-              <p style={{ color: "#64748b", fontSize: "12px", margin: "0 0 8px 0" }}>
-                Use the toolbar to format your message. What you see here is exactly how recipients will see it.
-              </p>
-              {/* key forces full remount so initialValue is always picked up correctly */}
-              <RichEditor
-                key={editorKey}
-                initialValue={body}
-                onChange={setBody}
-                minHeight="260px"
-              />
-            </div>
-            {err && <div style={{ color: "#f87171", fontSize: "13px" }}>{err}</div>}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", paddingTop: "4px" }}>
-              <div onClick={back} style={BTN("#334155", "#cbd5e1")}>Cancel</div>
-              <div onClick={save} style={{ ...BTN("linear-gradient(135deg,#3b82f6,#6366f1)"), opacity: saving ? 0.6 : 1, pointerEvents: saving ? "none" : "auto" }}>
-                {saving ? "Saving…" : "Save Template"}
-              </div>
-            </div>
-          </div>
+          <TemplateEditorForm
+            key={editTarget ? editTarget.id : "new"}
+            template={editTarget || null}
+            onSave={handleSaved}
+            onBack={() => setEditTarget(null)}
+          />
         )}
       </div>
     </div>
   );
 }
 
-// ─── Compose Modal ───────────────────────────────────────────────────────────
+// ─── Compose Modal ────────────────────────────────────────────────────────────
 export function EmailModal({ members, pre, lists = [], onClose, onSend, onListSaved, flash }) {
   const [sel, setSel] = useState(pre || []);
   const [subj, setSubj] = useState("");
@@ -401,8 +429,7 @@ export function EmailModal({ members, pre, lists = [], onClose, onSend, onListSa
                 <div><label style={LS}>Subject *</label><input style={IS} value={subj} onChange={e => setSubj(e.target.value)} /></div>
                 <div>
                   <label style={{ ...LS, display: "block", marginBottom: "6px" }}>Message *</label>
-                  {/* Controlled mode — value syncs when template is applied */}
-                  <RichEditor value={body} onChange={setBody} minHeight="180px" />
+                  <ControlledRichEditor value={body} onChange={setBody} minHeight="180px" />
                 </div>
                 {err && <div style={{ background: "#7f1d1d33", border: "1px solid #991b1b", borderRadius: "8px", padding: "10px 14px", color: "#fca5a5", fontSize: "13px" }}>{err}</div>}
               </div>
