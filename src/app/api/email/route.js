@@ -38,6 +38,8 @@ export async function DELETE(req) {
 }
 
 // POST /api/email — send email to selected member IDs
+// Uses Resend batch API so each recipient gets their own individual email
+// addressed directly to them — no BCC, no email exposure between members.
 export async function POST(req) {
   try {
     const { memberIds, subject, body } = await req.json();
@@ -67,35 +69,49 @@ export async function POST(req) {
       return NextResponse.json({ error: 'No valid email addresses found for selected members' }, { status: 400 });
     }
 
-    const toAddresses = members.map(m => ({
-      email: m.email,
-      name: `${m.first_name} ${m.last_name}`,
-    }));
+    const htmlBody = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#333;">
+      <div style="margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #3b82f6;">
+        <strong style="font-size:18px;color:#1e3a5f;">Senior Men's Club</strong>
+      </div>
+      <div style="white-space:pre-wrap;line-height:1.6;font-size:15px;">${body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>')}</div>
+      <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;">
+        Senior Men's Club &bull; Sent via SMC Club Manager
+      </div>
+    </div>`;
 
-    const { data, error } = await resend.emails.send({
+    // Build one email object per member — Resend's batch API sends each
+    // as a fully independent email addressed directly to that person.
+    // No member sees any other member's address.
+    const batch = members.map(m => ({
       from: FROM,
       reply_to: REPLY_TO,
-      to: [FROM],
-      bcc: toAddresses.map(t => `${t.name} <${t.email}>`),
+      to: [`${m.first_name} ${m.last_name} <${m.email}>`],
       subject,
       text: body,
-      html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#333;">
-        <div style="margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #3b82f6;">
-          <strong style="font-size:18px;color:#1e3a5f;">Senior Men's Club</strong>
-        </div>
-        <div style="white-space:pre-wrap;line-height:1.6;font-size:15px;">${body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>')}</div>
-        <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;">
-          Senior Men's Club &bull; Sent via SMC Club Manager
-        </div>
-      </div>`,
-    });
+      html: htmlBody,
+    }));
 
-    if (error) {
+    // Resend batch limit is 100 per call — chunk if needed
+    const CHUNK = 100;
+    let totalSent = 0;
+    let firstError = null;
+
+    for (let i = 0; i < batch.length; i += CHUNK) {
+      const chunk = batch.slice(i, i + CHUNK);
+      const { data, error } = await resend.batch.send(chunk);
+      if (error) {
+        firstError = error;
+        break;
+      }
+      totalSent += chunk.length;
+    }
+
+    if (firstError) {
       await sql`
         INSERT INTO email_log (subject, recipient_count, recipient_emails, status, error)
-        VALUES (${subject}, ${members.length}, ${members.map(m => m.email).join(', ')}, 'failed', ${error.message})
+        VALUES (${subject}, ${members.length}, ${members.map(m => m.email).join(', ')}, 'failed', ${firstError.message})
       `;
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: firstError.message }, { status: 500 });
     }
 
     await sql`
@@ -103,7 +119,7 @@ export async function POST(req) {
       VALUES (${subject}, ${members.length}, ${members.map(m => m.email).join(', ')}, 'sent')
     `;
 
-    return NextResponse.json({ success: true, sent: members.length, resendId: data?.id });
+    return NextResponse.json({ success: true, sent: totalSent });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
