@@ -136,11 +136,12 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
   const [tab, setTab] = useState("inbox");
   const [log, setLog] = useState([]);
   const [inbox, setInbox] = useState([]);
-  const [trash, setTrash] = useState([]); // combined sent+inbox trash
+  const [trash, setTrash] = useState([]);
   const [logLoading, setLogLoading] = useState(true);
   const [inboxLoading, setInboxLoading] = useState(true);
   const [trashLoading, setTrashLoading] = useState(false);
-  const [openMsg, setOpenMsg] = useState(null);
+  const [openMsg, setOpenMsg] = useState(null);   // inbox message detail
+  const [openSent, setOpenSent] = useState(null); // sent email detail
   const [replyMode, setReplyMode] = useState(null);
   const [replyHtml, setReplyHtml] = useState("");
   const [replySending, setReplySending] = useState(false);
@@ -165,12 +166,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
     ]).then(([sentTrash, inboxTrash]) => {
       const sent = Array.isArray(sentTrash) ? sentTrash.map(x => ({ ...x, _type: "sent" })) : [];
       const inb = Array.isArray(inboxTrash) ? inboxTrash.map(x => ({ ...x, _type: "inbox" })) : [];
-      // Merge and sort by date desc
-      const merged = [...sent, ...inb].sort((a, b) => {
-        const da = new Date(a.sent_at || a.received_at);
-        const db = new Date(b.sent_at || b.received_at);
-        return db - da;
-      });
+      const merged = [...sent, ...inb].sort((a, b) => new Date(b.sent_at || b.received_at) - new Date(a.sent_at || a.received_at));
       setTrash(merged);
       setTrashLoading(false);
     }).catch(() => setTrashLoading(false));
@@ -181,21 +177,18 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
   }, []);
 
   useEffect(() => { loadLog(); loadInbox(); loadLists(); }, [loadLog, loadInbox, loadLists]);
-
-  // Load trash when tab switches to it
   useEffect(() => { if (tab === "trash") loadTrash(); }, [tab, loadTrash]);
 
   const fmtDate = ts => {
     if (!ts) return "";
-    const d = new Date(ts);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
   };
 
-  // Soft-delete (move to trash)
   const softDeleteSent = async (e, id) => {
     e.stopPropagation();
     await fetch(`/api/email?id=${id}`, { method: "DELETE" });
     setLog(prev => prev.filter(x => x.id !== id));
+    if (openSent?.id === id) setOpenSent(null);
   };
 
   const softDeleteInbox = async (e, id) => {
@@ -205,7 +198,6 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
     if (openMsg?.id === id) closeMsg();
   };
 
-  // Restore from trash
   const restoreItem = async (item) => {
     if (item._type === "sent") {
       await fetch(`/api/email?id=${item.id}`, { method: "PATCH" });
@@ -214,11 +206,9 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
     }
     setTrash(prev => prev.filter(x => !(x.id === item.id && x._type === item._type)));
     if (flash) flash("Restored to " + (item._type === "sent" ? "Sent" : "Inbox"));
-    // Reload the appropriate folder
     if (item._type === "sent") loadLog(); else loadInbox();
   };
 
-  // Permanent delete from trash
   const permanentDelete = async (item) => {
     if (item._type === "sent") {
       await fetch(`/api/email?id=${item.id}&permanent=true`, { method: "DELETE" });
@@ -246,6 +236,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
   });
 
   const openInboxMsg = async (msg) => {
+    setOpenSent(null);
     setOpenMsg(msg); setReplyMode(null); setReplyHtml("");
     if (!msg.is_read) {
       await fetch(`/api/email/inbound/${msg.id}`, { method: "PATCH" });
@@ -309,12 +300,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
   };
 
   const previewText = (body) => cleanBodyText(body).replace(/\s+/g, ' ').trim();
-
-  const refreshCurrent = () => {
-    if (tab === "inbox") loadInbox();
-    else if (tab === "sent") loadLog();
-    else loadTrash();
-  };
+  const refreshCurrent = () => { if (tab === "inbox") loadInbox(); else if (tab === "sent") loadLog(); else loadTrash(); };
 
   return (
     <div>
@@ -381,7 +367,35 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
         </div>
       )}
 
-      {/* Open message detail */}
+      {/* Sent email detail */}
+      {openSent && (
+        <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", marginBottom: "16px", overflow: "hidden" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: "1px solid #334155", background: "#0f172a40" }}>
+            <div style={{ color: "#f1f5f9", fontSize: "15px", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{openSent.subject}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "12px", flexShrink: 0 }}>
+              <div style={{ padding: "3px 10px", borderRadius: "99px", fontSize: "11px", fontWeight: "600", background: openSent.status === "sent" ? "#06402020" : "#7f1d1d20", color: openSent.status === "sent" ? "#34d399" : "#f87171", border: `1px solid ${openSent.status === "sent" ? "#06402040" : "#7f1d1d40"}` }}>
+                {openSent.status === "sent" ? "Sent" : "Failed"}
+              </div>
+              <div onClick={() => setOpenSent(null)} style={{ color: "#64748b", cursor: "pointer", fontSize: "18px", lineHeight: 1, padding: "4px 6px" }}>✕</div>
+            </div>
+          </div>
+          <div style={{ padding: "12px 20px", borderBottom: "1px solid #1e293b", background: "#0f172a20" }}>
+            <div style={{ color: "#94a3b8", fontSize: "13px", marginBottom: "2px" }}>
+              <span style={{ color: "#64748b" }}>To: </span>
+              {openSent.recipient_count} recipient{openSent.recipient_count !== 1 ? "s" : ""}
+            </div>
+            {openSent.recipient_emails && (
+              <div style={{ color: "#64748b", fontSize: "12px", marginBottom: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{openSent.recipient_emails}</div>
+            )}
+            <div style={{ color: "#64748b", fontSize: "12px" }}>{fmtDate(openSent.sent_at)}</div>
+          </div>
+          <div style={{ padding: "16px 20px", color: "#64748b", fontSize: "13px", fontStyle: "italic" }}>
+            Message content is not stored after sending. View the original in your email client.
+          </div>
+        </div>
+      )}
+
+      {/* Inbox message detail */}
       {openMsg && (
         <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", marginBottom: "16px", overflow: "hidden" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: "1px solid #334155", background: "#0f172a40" }}>
@@ -425,7 +439,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
         </div>
       )}
 
-      {/* Tabs — Inbox, Sent, Trash */}
+      {/* Tabs */}
       <div style={{ background: "#1e293b", borderRadius: "12px", border: "1px solid #334155" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #334155" }}>
           <div style={{ display: "flex", gap: "8px" }}>
@@ -472,7 +486,8 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
           logLoading ? <div style={{ padding: "32px", textAlign: "center", color: "#64748b", fontSize: "14px" }}>Loading...</div>
           : log.length === 0 ? <div style={{ padding: "32px", textAlign: "center", color: "#64748b", fontSize: "14px" }}>No emails sent yet</div>
           : <div>{log.map((entry, i) => (
-              <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "14px 20px", borderBottom: i < log.length - 1 ? "1px solid #334155" : "none", background: i % 2 === 0 ? "#0f172a20" : "transparent" }}>
+              <div key={entry.id} onClick={() => { setOpenMsg(null); setOpenSent(openSent?.id === entry.id ? null : entry); }}
+                style={{ display: "flex", alignItems: "center", gap: "8px", padding: "14px 20px", borderBottom: i < log.length - 1 ? "1px solid #334155" : "none", background: openSent?.id === entry.id ? "#6366f115" : (i % 2 === 0 ? "#0f172a20" : "transparent"), cursor: "pointer", transition: "background 0.15s" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "6px", gap: "12px" }}>
                     <div style={{ color: "#f1f5f9", fontSize: "14px", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.subject}</div>
@@ -516,15 +531,10 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
                         </div>
                         <div style={{ color: "#64748b", fontSize: "12px" }}>{meta} · {fmtDate(date)}</div>
                       </div>
-                      {/* Restore button */}
-                      <div
-                        onClick={() => restoreItem(item)}
-                        title="Restore"
-                        style={{ display: "flex", alignItems: "center", gap: "4px", padding: "5px 10px", borderRadius: "6px", cursor: "pointer", background: "#1e3a5f", color: "#93c5fd", fontSize: "12px", fontWeight: "500", border: "1px solid #3b82f640", flexShrink: 0 }}
-                      >
+                      <div onClick={() => restoreItem(item)} title="Restore"
+                        style={{ display: "flex", alignItems: "center", gap: "4px", padding: "5px 10px", borderRadius: "6px", cursor: "pointer", background: "#1e3a5f", color: "#93c5fd", fontSize: "12px", fontWeight: "500", border: "1px solid #3b82f640", flexShrink: 0 }}>
                         ↩ Restore
                       </div>
-                      {/* Permanent delete */}
                       <DelButton onClick={() => permanentDelete(item)} title="Delete permanently" />
                     </div>
                   );
