@@ -14,7 +14,6 @@ const TEMPLATES = {
   },
 };
 
-// Load Quill from CDN once
 let quillLoaded = false;
 function loadQuill() {
   if (quillLoaded || typeof window === "undefined") return Promise.resolve();
@@ -24,8 +23,6 @@ function loadQuill() {
     link.rel = "stylesheet";
     link.href = "https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css";
     document.head.appendChild(link);
-
-    // Add custom dark-mode styles for Quill
     const style = document.createElement("style");
     style.textContent = `
       .ql-toolbar { background:#0f172a !important; border:1px solid #334155 !important; border-bottom:none !important; border-radius:8px 8px 0 0 !important; }
@@ -46,7 +43,6 @@ function loadQuill() {
       .ql-snow .ql-tooltip input { background:#0f172a !important; border:1px solid #334155 !important; color:#f1f5f9 !important; }
     `;
     document.head.appendChild(style);
-
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js";
     script.onload = () => { quillLoaded = true; resolve(); };
@@ -54,10 +50,9 @@ function loadQuill() {
   });
 }
 
-function RichEditor({ value, onChange, onReady }) {
+function RichEditor({ value, onChange }) {
   const containerRef = useRef(null);
   const quillRef = useRef(null);
-
   useEffect(() => {
     let cancelled = false;
     loadQuill().then(() => {
@@ -78,35 +73,25 @@ function RichEditor({ value, onChange, onReady }) {
         },
       });
       quillRef.current = q;
-
-      // Set initial content
       if (value) q.root.innerHTML = value;
-
       q.on("text-change", () => {
         const html = q.root.innerHTML;
         onChange(html === "<p><br></p>" ? "" : html);
       });
-
-      if (onReady) onReady(q);
     });
     return () => { cancelled = true; };
   }, []); // eslint-disable-line
-
-  // When template is applied, update editor content
   useEffect(() => {
     if (quillRef.current && value !== undefined) {
       const currentHtml = quillRef.current.root.innerHTML;
       const normalised = currentHtml === "<p><br></p>" ? "" : currentHtml;
-      if (normalised !== value) {
-        quillRef.current.root.innerHTML = value || "";
-      }
+      if (normalised !== value) quillRef.current.root.innerHTML = value || "";
     }
   }, [value]);
-
   return <div ref={containerRef} />;
 }
 
-export function EmailModal({ members, pre, onClose, onSend, flash }) {
+export function EmailModal({ members, pre, lists = [], onClose, onSend, onListSaved, flash }) {
   const [sel, setSel] = useState(pre || []);
   const [subj, setSubj] = useState("");
   const [body, setBody] = useState("");
@@ -115,32 +100,50 @@ export function EmailModal({ members, pre, onClose, onSend, flash }) {
   const [sentCount, setSentCount] = useState(0);
   const [rs, setRs] = useState("");
   const [err, setErr] = useState("");
-  const [templateKey, setTemplateKey] = useState(null);
+
+  // Save list state
+  const [showSaveList, setShowSaveList] = useState(false);
+  const [listName, setListName] = useState("");
+  const [savingList, setSavingList] = useState(false);
+  const [saveListErr, setSaveListErr] = useState("");
 
   const tog = id => setSel(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
 
   const applyTemplate = key => {
-    setTemplateKey(key);
     setSubj(TEMPLATES[key].subject);
     setBody(TEMPLATES[key].body);
+  };
+
+  const saveList = async () => {
+    if (!listName.trim() || !sel.length) return;
+    setSavingList(true);
+    setSaveListErr("");
+    try {
+      const res = await fetch("/api/lists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: listName.trim(), memberIds: sel }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setSaveListErr(data.error || "Save failed"); setSavingList(false); return; }
+      setShowSaveList(false);
+      setListName("");
+      setSavingList(false);
+      if (onListSaved) onListSaved();
+      if (flash) flash(`List "${data.name}" saved!`);
+    } catch (e) {
+      setSaveListErr("Network error"); setSavingList(false);
+    }
   };
 
   const doSend = async () => {
     if (!sel.length || !subj || !body) return;
     setSending(true);
     setErr("");
-
-    // Strip HTML to get plain text fallback
     const plainText = body
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/p>/gi, "\n")
-      .replace(/<[^>]+>/g, "")
-      .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-
+      .replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"').replace(/\n{3,}/g, "\n\n").trim();
     try {
       const res = await fetch("/api/email", {
         method: "POST",
@@ -148,11 +151,7 @@ export function EmailModal({ members, pre, onClose, onSend, flash }) {
         body: JSON.stringify({ memberIds: sel, subject: subj, body: plainText, htmlBody: body }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setErr(data.error || "Send failed");
-        setSending(false);
-        return;
-      }
+      if (!res.ok) { setErr(data.error || "Send failed"); setSending(false); return; }
       setSentCount(data.sent);
       setSending(false);
       setSent(true);
@@ -180,6 +179,7 @@ export function EmailModal({ members, pre, onClose, onSend, flash }) {
             </div>
           : <>
               <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+
                 {/* Templates */}
                 <div>
                   <label style={{ ...LS, display: "block", marginBottom: "6px" }}>Quick Templates</label>
@@ -188,13 +188,20 @@ export function EmailModal({ members, pre, onClose, onSend, flash }) {
                     <span onClick={() => applyTemplate("meeting")} style={{ cursor: "pointer", padding: "6px 12px", background: "#3b82f615", border: "1px solid #3b82f640", borderRadius: "6px", color: "#60a5fa", fontSize: "12px", fontWeight: "500" }}>📅 Meeting Announcement</span>
                   </div>
                 </div>
+
                 {/* Recipients */}
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                     <label style={{ color: "#cbd5e1", fontSize: "13px", fontWeight: "500" }}>Recipients ({sel.length})</label>
-                    <div style={{ display: "flex", gap: "6px" }}>
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
                       <span onClick={() => setSel(members.filter(m => m.status === "active").map(m => m.id))} style={{ color: "#3b82f6", fontSize: "12px", cursor: "pointer", padding: "2px 8px", borderRadius: "4px", background: "#3b82f610" }}>All Active</span>
                       <span onClick={() => setSel(members.filter(m => getDuesStatus(m) !== "paid" && m.status === "active").map(m => m.id))} style={{ color: "#fbbf24", fontSize: "12px", cursor: "pointer", padding: "2px 8px", borderRadius: "4px", background: "#fbbf2410" }}>Unpaid</span>
+                      {/* Saved lists dropdown */}
+                      {lists.length > 0 && lists.map(l => (
+                        <span key={l.id} onClick={() => setSel(l.member_ids)} style={{ color: "#a78bfa", fontSize: "12px", cursor: "pointer", padding: "2px 8px", borderRadius: "4px", background: "#a78bfa10", border: "1px solid #a78bfa30" }}>
+                          📋 {l.name}
+                        </span>
+                      ))}
                       <span onClick={() => setSel([])} style={{ color: "#94a3b8", fontSize: "12px", cursor: "pointer", padding: "2px 8px" }}>Clear</span>
                     </div>
                   </div>
@@ -212,10 +219,34 @@ export function EmailModal({ members, pre, onClose, onSend, flash }) {
                     ))}
                     {fil.length === 0 && <p style={{ color: "#64748b", fontSize: "13px", padding: "12px", textAlign: "center", margin: 0 }}>No match</p>}
                   </div>
-                  {sel.length > 0 && <div style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                    {sel.map(id => { const m = members.find(x => x.id === id); if (!m) return null; return <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "3px 8px 3px 10px", background: "#334155", borderRadius: "99px", fontSize: "12px", color: "#cbd5e1" }}>{m.firstName} {m.lastName}<span onClick={() => tog(id)} style={{ cursor: "pointer", color: "#64748b", fontWeight: "bold" }}>x</span></span>; })}
-                  </div>}
+                  {sel.length > 0 && (
+                    <div style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center" }}>
+                      {sel.map(id => { const m = members.find(x => x.id === id); if (!m) return null; return <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "3px 8px 3px 10px", background: "#334155", borderRadius: "99px", fontSize: "12px", color: "#cbd5e1" }}>{m.firstName} {m.lastName}<span onClick={() => tog(id)} style={{ cursor: "pointer", color: "#64748b", fontWeight: "bold" }}>x</span></span>; })}
+                      <span onClick={() => setShowSaveList(s => !s)} style={{ cursor: "pointer", padding: "3px 10px", background: "#1e3a5f", border: "1px solid #3b82f640", borderRadius: "99px", fontSize: "12px", color: "#93c5fd" }}>
+                        💾 Save as list
+                      </span>
+                    </div>
+                  )}
+                  {/* Save list inline form */}
+                  {showSaveList && sel.length > 0 && (
+                    <div style={{ marginTop: "10px", display: "flex", gap: "8px", alignItems: "center", background: "#0f172a", padding: "10px 12px", borderRadius: "8px", border: "1px solid #334155" }}>
+                      <input
+                        value={listName}
+                        onChange={e => setListName(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") saveList(); }}
+                        placeholder="List name (e.g. Board Members)"
+                        style={{ ...IS, flex: 1, padding: "7px 10px", fontSize: "13px" }}
+                        autoFocus
+                      />
+                      <div onClick={saveList} style={{ ...BTN("linear-gradient(135deg,#3b82f6,#6366f1)"), fontSize: "12px", padding: "7px 14px", opacity: savingList ? 0.6 : 1, pointerEvents: savingList ? "none" : "auto", whiteSpace: "nowrap" }}>
+                        {savingList ? "Saving…" : "Save"}
+                      </div>
+                      <div onClick={() => { setShowSaveList(false); setListName(""); setSaveListErr(""); }} style={{ color: "#64748b", cursor: "pointer", fontSize: "16px", padding: "0 4px" }}>✕</div>
+                    </div>
+                  )}
+                  {saveListErr && <div style={{ color: "#f87171", fontSize: "12px", marginTop: "4px" }}>{saveListErr}</div>}
                 </div>
+
                 <div><label style={LS}>Subject *</label><input style={IS} value={subj} onChange={e => setSubj(e.target.value)} /></div>
                 <div>
                   <label style={{ ...LS, display: "block", marginBottom: "6px" }}>Message *</label>
