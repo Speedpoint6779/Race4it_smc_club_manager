@@ -61,23 +61,27 @@ export async function PATCH(req) {
  * Clean Quill HTML for email sending.
  *
  * Quill uses <p><br></p> as a blank-line spacer between paragraphs.
- * We convert each one to a <div style="height:1em"></div> so that email
- * clients render exactly one blank line — matching what the user sees in
- * the editor. We do NOT strip them, because that removes all paragraph spacing.
  *
- * We also collapse runs of 2+ consecutive spacers down to 1, so double-pressing
- * Enter doesn't create two blank lines in the email.
+ * We convert each one to <p style="margin:0;padding:0;line-height:1.7;font-size:15px;">&nbsp;</p>
+ * This is the universally safe blank-line technique for all email clients including Outlook,
+ * which ignores CSS height/margin on divs but does respect &nbsp; inside <p> tags.
+ *
+ * Consecutive spacers are collapsed to one to avoid double-blank-lines.
  */
 function cleanQuillHtml(html) {
   if (!html) return html;
 
-  // Convert empty Quill paragraphs into a 1em spacer div
-  let cleaned = html
-    .replace(/<p>(\s|&nbsp;)*<br\s*\/?>\s*<\/p>/gi, '<div style="height:1em"></div>')
-    .replace(/<p>(\s|&nbsp;)*<\/p>/gi, '<div style="height:1em"></div>');
+  // The Outlook-safe blank line: a paragraph containing only a non-breaking space.
+  // line-height and font-size match the wrapper div so the blank line is exactly 1 line tall.
+  const SPACER = '<p style="margin:0;padding:0;line-height:1.7;font-size:15px;">&nbsp;</p>';
 
-  // Collapse consecutive spacers down to one (double blank lines → single)
-  cleaned = cleaned.replace(/(<div style="height:1em"><\/div>\s*){2,}/gi, '<div style="height:1em"></div>');
+  let cleaned = html
+    .replace(/<p>(\s|&nbsp;)*<br\s*\/?>\s*<\/p>/gi, SPACER)
+    .replace(/<p>(\s|&nbsp;)*<\/p>/gi, SPACER);
+
+  // Collapse 2+ consecutive spacers into one
+  const escapedSpacer = SPACER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  cleaned = cleaned.replace(new RegExp(`(${escapedSpacer}\\s*){2,}`, 'g'), SPACER);
 
   return cleaned.trim();
 }
@@ -103,7 +107,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'No valid email addresses found for selected members' }, { status: 400 });
     }
 
-    // Convert Quill spacer paragraphs to 1em spacer divs
+    // Convert Quill spacer paragraphs to Outlook-safe &nbsp; blank lines
     const cleanedBody = cleanQuillHtml(htmlBody);
 
     const emailHtml = `<!DOCTYPE html>
