@@ -3,51 +3,88 @@ import { BTN } from "../ui";
 import { EmailModal } from "../EmailModal";
 import { useState, useEffect, useCallback } from "react";
 
+// Lines that indicate we're still inside MIME headers (not real content)
+const MIME_HEADER_LINE = /^(content-type|content-transfer-encoding|mime-version|charset|boundary|content-disposition)\s*[:=]/i;
+
+// Any line that is clearly a MIME artifact and not human text
+const MIME_JUNK_LINE = /^(charset=|boundary=|content-id:|x-ms-|x-mailer:|return-path:|received:|message-id:|date:|dkim-|arc-|authentication-results:)/i;
+
+/**
+ * Given a block of text that may be a raw MIME part (possibly with
+ * leading header lines like "charset=UTF-8" and "Content-Transfer-Encoding: ..."),
+ * strip those header lines from the top and return only the body.
+ */
+function stripMimeLeadingHeaders(text) {
+  const lines = text.split('\n');
+  let start = 0;
+  // Skip leading blank lines and MIME header/attribute lines
+  while (start < lines.length) {
+    const line = lines[start].trim();
+    if (line === '' || MIME_HEADER_LINE.test(line) || MIME_JUNK_LINE.test(line)) {
+      start++;
+    } else {
+      break;
+    }
+  }
+  return lines.slice(start).join('\n');
+}
+
 /**
  * Clean up stored body_text for display.
- * The DB may contain raw MIME that slipped through the server-side parser
- * (multipart boundaries, MIME headers, quoted-printable encoding, HTML CSS blobs).
- * This strips all of that and returns only the readable human text.
+ * Handles: raw MIME with boundary separators, quoted-printable encoding,
+ * leaked HTML/CSS, and excessive whitespace.
  */
 function cleanBodyText(raw) {
   if (!raw) return '';
 
   let text = raw;
 
-  // --- Step 1: Strip MIME part boundaries and their headers ---
-  // Pattern: lines starting with "------" boundary markers
-  // Split on them, then collect only the parts that contain readable text
-  if (/^-{4,}/m.test(text) || /^Content-Type:/im.test(text)) {
+  // --- Step 1: If this looks like raw MIME, extract the readable parts ---
+  const hasBoundary = /^-{4,}/m.test(text);
+  const hasMimeHeaders = /^(Content-Type|Content-Transfer-Encoding):/im.test(text);
+
+  if (hasBoundary || hasMimeHeaders) {
+    // Split on MIME boundary lines (------xxx)
     const parts = text.split(/^-{4,}[^\n]*/m);
     const readable = [];
+
     for (const part of parts) {
-      const t = part.trim();
-      if (!t) continue;
-      // Skip pure MIME header blocks
-      if (/^(Content-Type|Content-Transfer-Encoding|MIME-Version|charset)[\s\S]{0,300}$/i.test(t)) continue;
-      // Skip HTML/CSS blobs (Outlook Word-generated HTML)
-      if (/<html|<style[\s\S]*?>|@font-face|\.Mso|WordSection/i.test(t)) continue;
-      // Remove MIME header lines from the top of this part, keep the rest
-      const lines = t.split('\n');
-      const bodyStart = lines.findIndex(l => !/^(Content-Type|Content-Transfer-Encoding|charset|MIME-Version):/i.test(l.trim()));
-      if (bodyStart === -1) continue;
-      const candidate = lines.slice(bodyStart).join('\n').trim();
-      if (candidate.length > 10) readable.push(candidate);
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+
+      // Skip parts that are entirely HTML/CSS (Outlook Word blobs)
+      if (/<html[\s\S]*?>|<style[\s\S]*?>|@font-face|\.MsoNormal|WordSection/i.test(trimmed)) continue;
+
+      // Strip leading MIME header lines from this part
+      const stripped = stripMimeLeadingHeaders(trimmed).trim();
+      if (!stripped) continue;
+
+      // Skip if what remains is still HTML
+      if (/<html[\s\S]*?>|<style[\s\S]*?>/i.test(stripped)) continue;
+
+      // Must have some actual word characters to count as readable
+      if (stripped.replace(/\s/g, '').length < 5) continue;
+
+      readable.push(stripped);
     }
+
     if (readable.length > 0) {
-      // Use the longest readable part (most likely the actual message body)
+      // Pick the longest readable chunk — most likely the message body
       text = readable.sort((a, b) => b.length - a.length)[0];
     }
   }
 
-  // --- Step 2: Decode quoted-printable (=XX and soft line breaks =\n) ---
+  // --- Step 2: Strip any leading MIME header lines that still remain ---
+  text = stripMimeLeadingHeaders(text);
+
+  // --- Step 3: Decode quoted-printable (=XX hex bytes and =\n soft breaks) ---
   if (/=[0-9A-Fa-f]{2}|=\r?\n/.test(text)) {
     text = text
       .replace(/=\r?\n/g, '')
       .replace(/=([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
   }
 
-  // --- Step 3: Strip any remaining HTML tags that leaked through ---
+  // --- Step 4: Strip HTML tags if any leaked through ---
   if (/<[a-z][\s\S]*?>/i.test(text)) {
     text = text
       .replace(/<style[\s\S]*?<\/style>/gi, '')
@@ -57,10 +94,20 @@ function cleanBodyText(raw) {
       .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
   }
 
-  // --- Step 4: Normalize whitespace ---
+  // --- Step 5: Normalize whitespace ---
   text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  // Collapse 3+ consecutive blank lines to max 2
-  text = text.replace(/\n{3,}/g, '\n\n');
+
+  // Strip any remaining leading MIME-ish lines after decoding
+  text = text.split('\n').filter((line, idx, arr) => {
+    // Always keep lines once we've seen real content
+    const prevHasContent = arr.slice(0, idx).some(l => l.trim() && !MIME_HEADER_LINE.test(l) && !MIME_JUNK_LINE.test(l));
+    if (prevHasContent) return true;
+    // Before first real content: drop blank and MIME-header lines
+    return line.trim() && !MIME_HEADER_LINE.test(line.trim()) && !MIME_JUNK_LINE.test(line.trim());
+  }).join('\n');
+
+  // Collapse 2+ consecutive blank lines down to exactly 1
+  text = text.replace(/\n{2,}/g, '\n\n');
 
   return text.trim();
 }
@@ -183,7 +230,6 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
     }
   };
 
-  // Single-line preview for the inbox list
   const previewText = (body) =>
     cleanBodyText(body).replace(/\s+/g, ' ').trim();
 
@@ -373,7 +419,6 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
   );
 }
 
-// Hover-aware SVG trash button
 function DelButton({ onClick, title }) {
   const [hover, setHover] = useState(false);
   return (
