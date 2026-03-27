@@ -57,13 +57,29 @@ export async function PATCH(req) {
   }
 }
 
-// Remove empty Quill spacer paragraphs before sending/storing
+/**
+ * Clean Quill HTML for email sending.
+ *
+ * Quill uses <p><br></p> as a blank-line spacer between paragraphs.
+ * We convert each one to a <div style="height:1em"></div> so that email
+ * clients render exactly one blank line — matching what the user sees in
+ * the editor. We do NOT strip them, because that removes all paragraph spacing.
+ *
+ * We also collapse runs of 2+ consecutive spacers down to 1, so double-pressing
+ * Enter doesn't create two blank lines in the email.
+ */
 function cleanQuillHtml(html) {
   if (!html) return html;
-  return html
-    .replace(/<p>(\s|&nbsp;)*<br\s*\/?>\s*<\/p>/gi, '')
-    .replace(/<p>(\s|&nbsp;)*<\/p>/gi, '')
-    .trim();
+
+  // Convert empty Quill paragraphs into a 1em spacer div
+  let cleaned = html
+    .replace(/<p>(\s|&nbsp;)*<br\s*\/?>\s*<\/p>/gi, '<div style="height:1em"></div>')
+    .replace(/<p>(\s|&nbsp;)*<\/p>/gi, '<div style="height:1em"></div>');
+
+  // Collapse consecutive spacers down to one (double blank lines → single)
+  cleaned = cleaned.replace(/(<div style="height:1em"><\/div>\s*){2,}/gi, '<div style="height:1em"></div>');
+
+  return cleaned.trim();
 }
 
 // POST /api/email — send email to selected member IDs
@@ -87,7 +103,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'No valid email addresses found for selected members' }, { status: 400 });
     }
 
-    // Clean empty Quill spacer paragraphs
+    // Convert Quill spacer paragraphs to 1em spacer divs
     const cleanedBody = cleanQuillHtml(htmlBody);
 
     const emailHtml = `<!DOCTYPE html>
@@ -96,9 +112,9 @@ export async function POST(req) {
 <meta charset="utf-8">
 <style>
   body { margin:0; padding:0; font-family:Arial,Helvetica,sans-serif; background:#f9fafb; }
-  p { margin:0; padding:0 0 10px 0; }
-  ul, ol { margin:0; padding:0 0 10px 24px; }
-  li { margin:0 0 3px 0; }
+  p { margin:0; padding:0; }
+  ul, ol { margin:0; padding:0 0 0 24px; }
+  li { margin:0; }
   strong { font-weight:700; }
   a { color:#3b82f6; }
 </style>
@@ -133,7 +149,6 @@ export async function POST(req) {
       totalSent += chunk.length;
     }
 
-    // Store the cleaned Quill HTML so we can show it in the sent detail view
     const storedBody = cleanedBody || '';
 
     if (firstError) {
