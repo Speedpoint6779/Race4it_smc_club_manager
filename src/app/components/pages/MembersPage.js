@@ -54,28 +54,29 @@ export function MembersPage({ mwd, members, setMembers, flash }) {
     }
   };
 
-  const SortIcon = ({ col }) => {
-    if (sortCol !== col) return <span style={{ color: "#334155", marginLeft: "4px", fontSize: "10px" }}>↕</span>;
-    return <span style={{ color: "#93c5fd", marginLeft: "4px", fontSize: "10px" }}>{sortDir === "asc" ? "↑" : "↓"}</span>;
+  const colHeader = (label, col) => {
+    const isActive = sortCol === col;
+    return (
+      <div
+        key={col}
+        onClick={() => handleSort(col)}
+        style={{
+          ...HS,
+          cursor: "pointer",
+          userSelect: "none",
+          display: "flex",
+          alignItems: "center",
+          gap: "3px",
+          color: isActive ? "#93c5fd" : "#94a3b8", // always explicit — never undefined
+        }}
+      >
+        {label}
+        <span style={{ fontSize: "9px", color: isActive ? "#93c5fd" : "#475569" }}>
+          {isActive ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
+        </span>
+      </div>
+    );
   };
-
-  const colHeader = (label, col) => (
-    <div
-      key={col}
-      onClick={() => handleSort(col)}
-      style={{
-        ...HS,
-        cursor: "pointer",
-        userSelect: "none",
-        display: "flex",
-        alignItems: "center",
-        gap: "2px",
-        color: sortCol === col ? "#93c5fd" : undefined,
-      }}
-    >
-      {label}<SortIcon col={col} />
-    </div>
-  );
 
   const filtered = mwd.filter(m => {
     const ms = (m.firstName + " " + m.lastName + " " + m.email + " " + m.city).toLowerCase().includes(search.toLowerCase());
