@@ -103,6 +103,19 @@ function extractBody(raw) {
   return decoded.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
 }
 
+// Strip any remaining MIME header lines from the top of a text block
+// and collapse excessive blank lines — mirrors the client-side cleaner
+function cleanText(text) {
+  if (!text) return '';
+  const MIME_LINE = /^(content-type|content-transfer-encoding|mime-version|charset|boundary)\s*[:=]/i;
+  const lines = text.split('\n');
+  let start = 0;
+  while (start < lines.length && (lines[start].trim() === '' || MIME_LINE.test(lines[start].trim()))) {
+    start++;
+  }
+  return lines.slice(start).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 // POST /api/email/inbound — Resend inbound webhook
 export async function POST(req) {
   try {
@@ -128,6 +141,9 @@ export async function POST(req) {
                   payload.message_id || payload.headers?.['message-id'] || '';
     }
 
+    // Always store clean plain text in the DB
+    const cleanBodyText = cleanText(bodyText);
+
     const sql = getDb();
     await ensureTables(sql);
 
@@ -138,14 +154,18 @@ export async function POST(req) {
 
     await sql`
       INSERT INTO inbox_messages (from_address, to_address, subject, body_text, body_html, message_id)
-      VALUES (${from}, ${to}, ${subject}, ${bodyText}, ${bodyHtml}, ${messageId})
+      VALUES (${from}, ${to}, ${subject}, ${cleanBodyText}, ${bodyHtml}, ${messageId})
     `;
 
-    // Forward a copy to george@nctaylors.com
+    // Forward a clean copy to george@nctaylors.com
     if (process.env.RESEND_API_KEY) {
       try {
         const resend = new Resend(process.env.RESEND_API_KEY);
-        const fwdBody = bodyText || '(no plain-text body)';
+        const fwdBody = cleanBodyText || '(no message body)';
+        const safeHtml = fwdBody
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;').replace(/\n/g, '<br/>');
+
         await resend.emails.send({
           from: FROM,
           to: [FORWARD_TO],
@@ -155,15 +175,14 @@ export async function POST(req) {
             <p style="color:#64748b;font-size:13px;border-bottom:1px solid #e5e7eb;padding-bottom:12px;margin-bottom:16px;">
               <strong>Forwarded from SMC Club Manager inbox</strong>
             </p>
-            <table style="font-size:13px;color:#475569;margin-bottom:16px;">
-              <tr><td style="padding-right:12px;color:#94a3b8;">From:</td><td>${from}</td></tr>
-              <tr><td style="padding-right:12px;color:#94a3b8;">To:</td><td>${to}</td></tr>
-              <tr><td style="padding-right:12px;color:#94a3b8;">Subject:</td><td>${subject}</td></tr>
+            <table style="font-size:13px;color:#475569;margin-bottom:16px;border-collapse:collapse;">
+              <tr><td style="padding:2px 12px 2px 0;color:#94a3b8;">From:</td><td>${from}</td></tr>
+              <tr><td style="padding:2px 12px 2px 0;color:#94a3b8;">To:</td><td>${to}</td></tr>
+              <tr><td style="padding:2px 12px 2px 0;color:#94a3b8;">Subject:</td><td>${subject}</td></tr>
             </table>
-            <div style="white-space:pre-wrap;line-height:1.6;font-size:15px;border-top:1px solid #e5e7eb;padding-top:16px;">${
-              bodyHtml ||
-              fwdBody.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>')
-            }</div>
+            <div style="line-height:1.6;font-size:15px;border-top:1px solid #e5e7eb;padding-top:16px;">
+              ${safeHtml}
+            </div>
           </div>`,
         });
       } catch (fwdErr) {
