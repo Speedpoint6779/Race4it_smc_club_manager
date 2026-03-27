@@ -57,22 +57,16 @@ const QUILL_TOOLBAR = [
 ];
 
 // ─── StaticRichEditor ─────────────────────────────────────────────────────────
-// Used in the template manager. Receives a fixed `initialHtml` string that is
-// set into Quill exactly once on mount. Never re-syncs from outside — changes
-// are reported via `onChange`. Completely avoids the React state batch race.
 function StaticRichEditor({ initialHtml, onChange, minHeight = "260px" }) {
   const containerRef = useRef(null);
-  // Hold the initial html in a ref so the useEffect closure always has it
   const initialRef = useRef(initialHtml);
 
   useEffect(() => {
     let cancelled = false;
     loadQuill().then(() => {
       if (cancelled || !containerRef.current) return;
-      // Destroy any previous Quill instance on this container
       const existing = containerRef.current.__quill;
       if (existing) { existing.off("text-change"); }
-
       const q = new window.Quill(containerRef.current, {
         theme: "snow",
         placeholder: "Write your message here...",
@@ -81,12 +75,7 @@ function StaticRichEditor({ initialHtml, onChange, minHeight = "260px" }) {
       containerRef.current.__quill = q;
       q.root.style.minHeight = minHeight;
       q.container.querySelector(".ql-container").style.minHeight = minHeight;
-
-      // Set content directly — initialRef.current is stable, no race
-      if (initialRef.current) {
-        q.root.innerHTML = initialRef.current;
-      }
-
+      if (initialRef.current) q.root.innerHTML = initialRef.current;
       q.on("text-change", () => {
         const html = q.root.innerHTML;
         onChange(html === "<p><br></p>" ? "" : html);
@@ -99,9 +88,9 @@ function StaticRichEditor({ initialHtml, onChange, minHeight = "260px" }) {
 }
 
 // ─── ControlledRichEditor ─────────────────────────────────────────────────────
-// Used in the compose modal. Starts with `value`, and re-syncs when `value`
-// changes externally (e.g. when a template is applied).
-function ControlledRichEditor({ value, onChange, minHeight = "180px" }) {
+// Exposes a ref so the parent can read innerHTML directly at send time,
+// eliminating the race where body state lags behind what the user typed.
+function ControlledRichEditor({ value, onChange, editorRef, minHeight = "180px" }) {
   const containerRef = useRef(null);
   const quillRef = useRef(null);
 
@@ -118,6 +107,8 @@ function ControlledRichEditor({ value, onChange, minHeight = "180px" }) {
       q.root.style.minHeight = minHeight;
       q.container.querySelector(".ql-container").style.minHeight = minHeight;
       if (value) q.root.innerHTML = value;
+      // Expose Quill instance to parent via ref
+      if (editorRef) editorRef.current = q;
       q.on("text-change", () => {
         const html = q.root.innerHTML;
         onChange(html === "<p><br></p>" ? "" : html);
@@ -139,8 +130,6 @@ function ControlledRichEditor({ value, onChange, minHeight = "180px" }) {
 }
 
 // ─── Template Editor Form ─────────────────────────────────────────────────────
-// Separate component so it fully unmounts/remounts when switching templates.
-// This guarantees StaticRichEditor always mounts with the correct initialHtml.
 function TemplateEditorForm({ template, onSave, onBack }) {
   const [name, setName] = useState(template?.name || "");
   const [subject, setSubject] = useState(template?.subject || "");
@@ -181,11 +170,7 @@ function TemplateEditorForm({ template, onSave, onBack }) {
         <p style={{ color: "#64748b", fontSize: "12px", margin: "0 0 8px 0" }}>
           Use the toolbar to format your message. What you see here is exactly how recipients will see it.
         </p>
-        <StaticRichEditor
-          initialHtml={template?.body_html || ""}
-          onChange={setBody}
-          minHeight="260px"
-        />
+        <StaticRichEditor initialHtml={template?.body_html || ""} onChange={setBody} minHeight="260px" />
       </div>
       {err && <div style={{ color: "#f87171", fontSize: "13px" }}>{err}</div>}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", paddingTop: "4px" }}>
@@ -201,7 +186,6 @@ function TemplateEditorForm({ template, onSave, onBack }) {
 // ─── Template Manager ─────────────────────────────────────────────────────────
 function TemplateManager({ onClose, onChanged }) {
   const [templates, setTemplates] = useState([]);
-  // editTarget: null = list view, false = new, object = editing that template
   const [editTarget, setEditTarget] = useState(null);
 
   const load = useCallback(() => {
@@ -215,30 +199,21 @@ function TemplateManager({ onClose, onChanged }) {
     load(); onChanged();
   };
 
-  const handleSaved = () => {
-    load(); onChanged(); setEditTarget(null);
-  };
-
+  const handleSaved = () => { load(); onChanged(); setEditTarget(null); };
   const isEditing = editTarget !== null;
-  const editingName = editTarget ? editTarget.name : "New Template";
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: "20px" }}>
       <div style={{ background: "#1e293b", borderRadius: "16px", border: "1px solid #334155", width: "100%", maxWidth: "700px", maxHeight: "90vh", overflow: "auto" }}>
-        {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 24px", borderBottom: "1px solid #334155" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            {isEditing && (
-              <div onClick={() => setEditTarget(null)} style={{ color: "#64748b", cursor: "pointer", fontSize: "13px" }}>← Back</div>
-            )}
+            {isEditing && <div onClick={() => setEditTarget(null)} style={{ color: "#64748b", cursor: "pointer", fontSize: "13px" }}>← Back</div>}
             <h2 style={{ color: "#f1f5f9", fontSize: "17px", fontWeight: "600", margin: 0 }}>
-              {isEditing ? editingName : "Email Templates"}
+              {isEditing ? (editTarget ? editTarget.name : "New Template") : "Email Templates"}
             </h2>
           </div>
           <div onClick={onClose} style={{ color: "#94a3b8", cursor: "pointer", padding: "4px" }}><Icons.X /></div>
         </div>
-
-        {/* List view */}
         {!isEditing && (
           <div style={{ padding: "20px 24px" }}>
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
@@ -266,8 +241,6 @@ function TemplateManager({ onClose, onChanged }) {
             )}
           </div>
         )}
-
-        {/* Edit/New view — key prop ensures full remount for each template */}
         {isEditing && (
           <TemplateEditorForm
             key={editTarget ? editTarget.id : "new"}
@@ -298,6 +271,10 @@ export function EmailModal({ members, pre, lists = [], onClose, onSend, onListSa
   const [savingList, setSavingList] = useState(false);
   const [saveListErr, setSaveListErr] = useState("");
 
+  // Direct ref to the Quill instance — lets us read innerHTML at send time
+  // without depending on the body state having synced yet
+  const quillEditorRef = useRef(null);
+
   const loadTemplates = useCallback(() => {
     fetch("/api/templates").then(r => r.json()).then(d => { if (Array.isArray(d)) setTemplates(d); });
   }, []);
@@ -321,9 +298,14 @@ export function EmailModal({ members, pre, lists = [], onClose, onSend, onListSa
   };
 
   const doSend = async () => {
-    if (!sel.length || !subj || !body) return;
+    if (!sel.length || !subj) return;
+    // Read body directly from Quill at send time — avoids stale state
+    const quill = quillEditorRef.current;
+    const liveHtml = quill ? (quill.root.innerHTML === "<p><br></p>" ? "" : quill.root.innerHTML) : body;
+    if (!liveHtml) return;
+
     setSending(true); setErr("");
-    const plainText = body
+    const plainText = liveHtml
       .replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<li>/gi, "- ")
       .replace(/<[^>]+>/g, "")
       .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
@@ -331,7 +313,7 @@ export function EmailModal({ members, pre, lists = [], onClose, onSend, onListSa
     try {
       const res = await fetch("/api/email", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ memberIds: sel, subject: subj, body: plainText, htmlBody: body }),
+        body: JSON.stringify({ memberIds: sel, subject: subj, body: plainText, htmlBody: liveHtml }),
       });
       const data = await res.json();
       if (!res.ok) { setErr(data.error || "Send failed"); setSending(false); return; }
@@ -341,7 +323,8 @@ export function EmailModal({ members, pre, lists = [], onClose, onSend, onListSa
   };
 
   const fil = members.filter(m => !rs || ((m.firstName + " " + m.lastName + " " + m.email).toLowerCase().includes(rs.toLowerCase())));
-  const ok = sel.length > 0 && subj && body;
+  // ok: require recipients and subject; body check uses state as a hint but doSend reads live from Quill
+  const ok = sel.length > 0 && subj.trim().length > 0;
 
   return (
     <>
@@ -428,8 +411,8 @@ export function EmailModal({ members, pre, lists = [], onClose, onSend, onListSa
 
                 <div><label style={LS}>Subject *</label><input style={IS} value={subj} onChange={e => setSubj(e.target.value)} /></div>
                 <div>
-                  <label style={{ ...LS, display: "block", marginBottom: "6px" }}>Message *</label>
-                  <ControlledRichEditor value={body} onChange={setBody} minHeight="180px" />
+                  <label style={{ ...LS, display: "block", marginBottom: "6px" }}>Message</label>
+                  <ControlledRichEditor value={body} onChange={setBody} editorRef={quillEditorRef} minHeight="180px" />
                 </div>
                 {err && <div style={{ background: "#7f1d1d33", border: "1px solid #991b1b", borderRadius: "8px", padding: "10px 14px", color: "#fca5a5", fontSize: "13px" }}>{err}</div>}
               </div>
