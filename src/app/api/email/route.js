@@ -38,11 +38,10 @@ export async function DELETE(req) {
 }
 
 // POST /api/email — send email to selected member IDs
-// Uses Resend batch API so each recipient gets their own individual email
-// addressed directly to them — no BCC, no email exposure between members.
+// Uses Resend batch API so each recipient gets their own individual email.
 export async function POST(req) {
   try {
-    const { memberIds, subject, body } = await req.json();
+    const { memberIds, subject, body, htmlBody } = await req.json();
 
     if (!memberIds?.length || !subject || !body) {
       return NextResponse.json({ error: 'memberIds, subject, and body are required' }, { status: 400 });
@@ -53,7 +52,6 @@ export async function POST(req) {
     }
 
     const resend = new Resend(process.env.RESEND_API_KEY);
-
     const sql = getDb();
     await ensureTables(sql);
 
@@ -69,40 +67,40 @@ export async function POST(req) {
       return NextResponse.json({ error: 'No valid email addresses found for selected members' }, { status: 400 });
     }
 
-    const htmlBody = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#333;">
+    // Wrap the body in a branded email shell
+    // If htmlBody is provided (from rich editor), use it directly inside the shell
+    // Otherwise fall back to plain text wrapped in pre-wrap
+    const emailHtml = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#333;">
       <div style="margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #3b82f6;">
         <strong style="font-size:18px;color:#1e3a5f;">Senior Men's Club</strong>
       </div>
-      <div style="white-space:pre-wrap;line-height:1.6;font-size:15px;">${body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>')}</div>
+      <div style="line-height:1.6;font-size:15px;">
+        ${htmlBody || body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>')}
+      </div>
       <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;">
         Senior Men's Club &bull; Sent via SMC Club Manager
       </div>
     </div>`;
 
-    // Build one email object per member — Resend's batch API sends each
-    // as a fully independent email addressed directly to that person.
-    // No member sees any other member's address.
+    // One email per member — no BCC, no address exposure
     const batch = members.map(m => ({
       from: FROM,
       reply_to: REPLY_TO,
       to: [`${m.first_name} ${m.last_name} <${m.email}>`],
       subject,
       text: body,
-      html: htmlBody,
+      html: emailHtml,
     }));
 
-    // Resend batch limit is 100 per call — chunk if needed
+    // Resend batch limit is 100 per call
     const CHUNK = 100;
     let totalSent = 0;
     let firstError = null;
 
     for (let i = 0; i < batch.length; i += CHUNK) {
       const chunk = batch.slice(i, i + CHUNK);
-      const { data, error } = await resend.batch.send(chunk);
-      if (error) {
-        firstError = error;
-        break;
-      }
+      const { error } = await resend.batch.send(chunk);
+      if (error) { firstError = error; break; }
       totalSent += chunk.length;
     }
 
