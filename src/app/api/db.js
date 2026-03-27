@@ -61,6 +61,19 @@ export async function ensureTables(sql) {
       error TEXT DEFAULT ''
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS inbox_messages (
+      id SERIAL PRIMARY KEY,
+      from_address TEXT NOT NULL,
+      to_address TEXT DEFAULT '',
+      subject TEXT DEFAULT '(no subject)',
+      body_text TEXT DEFAULT '',
+      body_html TEXT DEFAULT '',
+      message_id TEXT DEFAULT '',
+      is_read BOOLEAN DEFAULT false,
+      received_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
   const existing = await sql`SELECT COUNT(*) as count FROM users`;
   if (parseInt(existing[0].count) === 0) {
     await sql`INSERT INTO users (name, username, password) VALUES ('Admin', 'admin', 'admin123')`;
