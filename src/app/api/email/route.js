@@ -13,8 +13,8 @@ export async function GET(req) {
     const sql = getDb();
     await ensureTables(sql);
     const rows = folder === 'trash'
-      ? await sql`SELECT id, subject, recipient_count, recipient_emails, sent_at, status, error, deleted FROM email_log WHERE deleted = true ORDER BY sent_at DESC LIMIT 50`
-      : await sql`SELECT id, subject, recipient_count, recipient_emails, sent_at, status, error, deleted FROM email_log WHERE deleted = false ORDER BY sent_at DESC LIMIT 50`;
+      ? await sql`SELECT id, subject, recipient_count, recipient_emails, body_html, sent_at, status, error, deleted FROM email_log WHERE deleted = true ORDER BY sent_at DESC LIMIT 50`
+      : await sql`SELECT id, subject, recipient_count, recipient_emails, body_html, sent_at, status, error, deleted FROM email_log WHERE deleted = false ORDER BY sent_at DESC LIMIT 50`;
     return NextResponse.json(rows);
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -57,15 +57,9 @@ export async function PATCH(req) {
   }
 }
 
-/**
- * Clean up Quill HTML before sending:
- * - Remove empty <p><br></p> spacer paragraphs Quill inserts between paragraphs
- * - Collapse multiple consecutive empty paragraphs
- * This prevents double-spacing in email clients.
- */
+// Remove empty Quill spacer paragraphs before sending/storing
 function cleanQuillHtml(html) {
   if (!html) return html;
-  // Remove empty paragraphs that Quill uses as spacers (<p><br></p> or <p> </p>)
   return html
     .replace(/<p>(\s|&nbsp;)*<br\s*\/?>\s*<\/p>/gi, '')
     .replace(/<p>(\s|&nbsp;)*<\/p>/gi, '')
@@ -93,7 +87,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'No valid email addresses found for selected members' }, { status: 400 });
     }
 
-    // Clean empty Quill spacer paragraphs before building the email
+    // Clean empty Quill spacer paragraphs
     const cleanedBody = cleanQuillHtml(htmlBody);
 
     const emailHtml = `<!DOCTYPE html>
@@ -138,11 +132,15 @@ export async function POST(req) {
       if (error) { firstError = error; break; }
       totalSent += chunk.length;
     }
+
+    // Store the cleaned Quill HTML so we can show it in the sent detail view
+    const storedBody = cleanedBody || '';
+
     if (firstError) {
-      await sql`INSERT INTO email_log (subject, recipient_count, recipient_emails, status, error) VALUES (${subject}, ${members.length}, ${members.map(m => m.email).join(', ')}, 'failed', ${firstError.message})`;
+      await sql`INSERT INTO email_log (subject, recipient_count, recipient_emails, body_html, status, error) VALUES (${subject}, ${members.length}, ${members.map(m => m.email).join(', ')}, ${storedBody}, 'failed', ${firstError.message})`;
       return NextResponse.json({ error: firstError.message }, { status: 500 });
     }
-    await sql`INSERT INTO email_log (subject, recipient_count, recipient_emails, status) VALUES (${subject}, ${members.length}, ${members.map(m => m.email).join(', ')}, 'sent')`;
+    await sql`INSERT INTO email_log (subject, recipient_count, recipient_emails, body_html, status) VALUES (${subject}, ${members.length}, ${members.map(m => m.email).join(', ')}, ${storedBody}, 'sent')`;
     return NextResponse.json({ success: true, sent: totalSent });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
