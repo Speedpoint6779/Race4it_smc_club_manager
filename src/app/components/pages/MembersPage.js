@@ -5,6 +5,28 @@ import { MemberModal, DetailModal } from "../MemberModal";
 import { EmailModal } from "../EmailModal";
 import { Confirm } from "../ui";
 
+const DUES_ORDER = { paid: 0, unpaid: 1, overdue: 2 };
+
+function sortMembers(list, col, dir) {
+  if (!col) return list;
+  return [...list].sort((a, b) => {
+    let av, bv;
+    switch (col) {
+      case "name":    av = (a.lastName + a.firstName).toLowerCase(); bv = (b.lastName + b.firstName).toLowerCase(); break;
+      case "email":   av = (a.email || "").toLowerCase(); bv = (b.email || "").toLowerCase(); break;
+      case "city":    av = (a.city || "").toLowerCase(); bv = (b.city || "").toLowerCase(); break;
+      case "status":  av = a.status || ""; bv = b.status || ""; break;
+      case "dues":    av = DUES_ORDER[a._ds] ?? 99; bv = DUES_ORDER[b._ds] ?? 99; break;
+      case "lastPaid":av = a.lastDuesPaid || ""; bv = b.lastDuesPaid || ""; break;
+      case "nextDue": av = a._nd || ""; bv = b._nd || ""; break;
+      default: return 0;
+    }
+    if (av < bv) return dir === "asc" ? -1 : 1;
+    if (av > bv) return dir === "asc" ? 1 : -1;
+    return 0;
+  });
+}
+
 export function MembersPage({ mwd, members, setMembers, flash }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -17,15 +39,51 @@ export function MembersPage({ mwd, members, setMembers, flash }) {
   const [confDel, setConfDel] = useState(null);
   const [selMode, setSelMode] = useState(false);
   const [sel, setSel] = useState([]);
+  const [sortCol, setSortCol] = useState("name");
+  const [sortDir, setSortDir] = useState("asc");
 
   const tog = id => setSel(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
   const mCols = selMode ? "40px 2fr 2fr 1.2fr 80px 70px 80px 80px 90px" : "2fr 2fr 1.2fr 80px 70px 80px 80px 90px";
 
-  const fm = mwd.filter(m => {
+  const handleSort = (col) => {
+    if (sortCol === col) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortCol(col);
+      setSortDir("asc");
+    }
+  };
+
+  const SortIcon = ({ col }) => {
+    if (sortCol !== col) return <span style={{ color: "#334155", marginLeft: "4px", fontSize: "10px" }}>↕</span>;
+    return <span style={{ color: "#93c5fd", marginLeft: "4px", fontSize: "10px" }}>{sortDir === "asc" ? "↑" : "↓"}</span>;
+  };
+
+  const colHeader = (label, col) => (
+    <div
+      key={col}
+      onClick={() => handleSort(col)}
+      style={{
+        ...HS,
+        cursor: "pointer",
+        userSelect: "none",
+        display: "flex",
+        alignItems: "center",
+        gap: "2px",
+        color: sortCol === col ? "#93c5fd" : undefined,
+      }}
+    >
+      {label}<SortIcon col={col} />
+    </div>
+  );
+
+  const filtered = mwd.filter(m => {
     const ms = (m.firstName + " " + m.lastName + " " + m.email + " " + m.city).toLowerCase().includes(search.toLowerCase());
     const mf = filter === "all" || (filter === "active" && m.status === "active") || (filter === "inactive" && m.status === "inactive") || (filter === "unpaid" && m._ds !== "paid") || (filter === "overdue" && m._ds === "overdue");
     return ms && mf;
   });
+
+  const fm = sortMembers(filtered, sortCol, sortDir);
 
   const saveM = async (m) => {
     const isEdit = members.find(x => x.id === m.id);
@@ -54,7 +112,18 @@ export function MembersPage({ mwd, members, setMembers, flash }) {
         {["all", "active", "inactive", "unpaid", "overdue"].map(f => <div key={f} onClick={() => setFilter(f)} style={{ padding: "10px 16px", border: "1px solid", borderRadius: "8px", fontSize: "13px", cursor: "pointer", fontWeight: "500", textTransform: "capitalize", background: filter === f ? "#3b82f620" : "#1e293b", borderColor: filter === f ? "#3b82f6" : "#334155", color: filter === f ? "#93c5fd" : "#94a3b8" }}>{f}</div>)}
       </div>
       <div style={{ background: "#1e293b", borderRadius: "12px", border: "1px solid #334155", overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: mCols, borderBottom: "1px solid #334155" }}>{selMode && <div style={HS} />}{["Name", "Email", "City", "Status", "Dues", "Last Paid", "Next Due", ""].map(h => <div key={h} style={HS}>{h}</div>)}</div>
+        {/* Header row */}
+        <div style={{ display: "grid", gridTemplateColumns: mCols, borderBottom: "1px solid #334155" }}>
+          {selMode && <div style={HS} />}
+          {colHeader("Name", "name")}
+          {colHeader("Email", "email")}
+          {colHeader("City", "city")}
+          {colHeader("Status", "status")}
+          {colHeader("Dues", "dues")}
+          {colHeader("Last Paid", "lastPaid")}
+          {colHeader("Next Due", "nextDue")}
+          <div style={HS} />
+        </div>
         <div style={{ maxHeight: (mViewSize * 44) + "px", overflowY: "auto" }}>
           {fm.map((m, i) => { const s = sel.includes(m.id); return (
             <div key={m.id} onClick={() => { if (selMode) tog(m.id); }} style={{ display: "grid", gridTemplateColumns: mCols, borderBottom: i < fm.length - 1 ? "1px solid #334155" : "none", cursor: selMode ? "pointer" : "default", background: s ? "#3b82f615" : "transparent", alignItems: "center" }}>
