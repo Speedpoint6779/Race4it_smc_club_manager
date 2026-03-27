@@ -1,7 +1,7 @@
 import { Icons } from "../Icons";
 import { BTN } from "../ui";
 import { EmailModal } from "../EmailModal";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 const MIME_HEADER_LINE = /^(content-type|content-transfer-encoding|mime-version|charset|boundary|content-disposition)\s*[:=]/i;
 const MIME_JUNK_LINE = /^(charset=|boundary=|content-id:|x-ms-|x-mailer:|return-path:|received:|message-id:|date:|dkim-|arc-|authentication-results:)/i;
@@ -55,6 +55,82 @@ function cleanBodyText(raw) {
   return text.trim();
 }
 
+// Inline rich text editor using the same Quill instance as EmailModal
+let quillLoaded = false;
+function loadQuill() {
+  if (quillLoaded || typeof window === "undefined") return Promise.resolve();
+  if (window.Quill) { quillLoaded = true; return Promise.resolve(); }
+  return new Promise(resolve => {
+    if (!document.querySelector('link[href*="quill"]')) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css";
+      document.head.appendChild(link);
+      const style = document.createElement("style");
+      style.textContent = `
+        .ql-toolbar { background:#0f172a !important; border:1px solid #334155 !important; border-bottom:none !important; border-radius:8px 8px 0 0 !important; }
+        .ql-container { background:#0f172a !important; border:1px solid #334155 !important; border-radius:0 0 8px 8px !important; min-height:120px !important; }
+        .ql-editor { color:#f1f5f9 !important; font-size:14px !important; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif !important; min-height:120px !important; }
+        .ql-editor.ql-blank::before { color:#475569 !important; font-style:normal !important; }
+        .ql-stroke { stroke:#94a3b8 !important; }
+        .ql-fill { fill:#94a3b8 !important; }
+        .ql-picker { color:#94a3b8 !important; }
+        .ql-picker-options { background:#1e293b !important; border:1px solid #334155 !important; }
+        .ql-picker-item { color:#94a3b8 !important; }
+        .ql-picker-item:hover { color:#f1f5f9 !important; background:#334155 !important; }
+        .ql-active .ql-stroke, button:hover .ql-stroke { stroke:#93c5fd !important; }
+        .ql-active .ql-fill, button:hover .ql-fill { fill:#93c5fd !important; }
+        .ql-active { color:#93c5fd !important; }
+        .ql-snow .ql-picker.ql-expanded .ql-picker-label { color:#93c5fd !important; border-color:#334155 !important; }
+        .ql-snow .ql-tooltip { background:#1e293b !important; border:1px solid #334155 !important; color:#f1f5f9 !important; }
+        .ql-snow .ql-tooltip input { background:#0f172a !important; border:1px solid #334155 !important; color:#f1f5f9 !important; }
+      `;
+      document.head.appendChild(style);
+    }
+    if (!document.querySelector('script[src*="quill"]')) {
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js";
+      script.onload = () => { quillLoaded = true; resolve(); };
+      document.head.appendChild(script);
+    } else {
+      const check = setInterval(() => { if (window.Quill) { clearInterval(check); quillLoaded = true; resolve(); } }, 50);
+    }
+  });
+}
+
+function ReplyEditor({ onChange }) {
+  const containerRef = useRef(null);
+  const quillRef = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadQuill().then(() => {
+      if (cancelled || !containerRef.current || quillRef.current) return;
+      const q = new window.Quill(containerRef.current, {
+        theme: "snow",
+        placeholder: "Write your reply...",
+        modules: {
+          toolbar: [
+            [{ font: [] }, { size: ["small", false, "large", "huge"] }],
+            ["bold", "italic", "underline", "strike"],
+            [{ color: [] }, { background: [] }],
+            [{ list: "ordered" }, { list: "bullet" }],
+            [{ align: [] }],
+            ["link"],
+            ["clean"],
+          ],
+        },
+      });
+      quillRef.current = q;
+      q.on("text-change", () => {
+        const html = q.root.innerHTML;
+        onChange(html === "<p><br></p>" ? "" : html);
+      });
+    });
+    return () => { cancelled = true; if (quillRef.current) { quillRef.current = null; } };
+  }, []); // eslint-disable-line
+  return <div ref={containerRef} />;
+}
+
 export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }) {
   const [showEM, setShowEM] = useState(false);
   const [emailPre, setEmailPre] = useState([]);
@@ -64,11 +140,9 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
   const [logLoading, setLogLoading] = useState(true);
   const [inboxLoading, setInboxLoading] = useState(true);
   const [openMsg, setOpenMsg] = useState(null);
-  const [showReply, setShowReply] = useState(false);
-  const [replyText, setReplyText] = useState("");
+  const [replyMode, setReplyMode] = useState(null); // null | "reply" | "replyAll"
+  const [replyHtml, setReplyHtml] = useState("");
   const [replySending, setReplySending] = useState(false);
-
-  // Saved lists
   const [lists, setLists] = useState([]);
   const [showListManager, setShowListManager] = useState(false);
 
@@ -125,32 +199,89 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
   });
 
   const openInboxMsg = async (msg) => {
-    setOpenMsg(msg); setShowReply(false); setReplyText("");
+    setOpenMsg(msg); setReplyMode(null); setReplyHtml("");
     if (!msg.is_read) {
       await fetch(`/api/email/inbound/${msg.id}`, { method: "PATCH" });
       setInbox(prev => prev.map(m => m.id === msg.id ? { ...m, is_read: true } : m));
     }
   };
 
-  const closeMsg = () => { setOpenMsg(null); setShowReply(false); setReplyText(""); };
+  const closeMsg = () => { setOpenMsg(null); setReplyMode(null); setReplyHtml(""); };
+
+  // Extract email address from "Name <email>" format
+  const extractEmail = (str) => {
+    if (!str) return "";
+    const m = str.match(/<(.+?)>/);
+    return m ? m[1].trim() : str.trim();
+  };
+
+  // For Reply All: collect all unique addresses from To field, excluding the club's own address
+  const getReplyAllAddresses = (msg) => {
+    const clubEmail = "club@seniormensclub.org";
+    const fromEmail = extractEmail(msg.from_address);
+    const toEmails = (msg.to_address || "").split(",").map(e => extractEmail(e.trim())).filter(e => e && e !== clubEmail);
+    const all = [fromEmail, ...toEmails].filter(e => e && e !== clubEmail);
+    return [...new Set(all)]; // deduplicate
+  };
 
   const sendReply = async () => {
-    if (!replyText.trim() || !openMsg) return;
+    if (!replyHtml || !openMsg) return;
     setReplySending(true);
-    const fromMatch = openMsg.from_address.match(/<(.+?)>/);
-    const replyToEmail = fromMatch ? fromMatch[1] : openMsg.from_address;
-    const matchedMember = members.find(m => m.email?.toLowerCase() === replyToEmail.toLowerCase());
+
+    // Plain text fallback
+    const plainText = replyHtml
+      .replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+      .replace(/\n{3,}/g, "\n\n").trim();
+
+    const replySubject = openMsg.subject.startsWith("Re:") ? openMsg.subject : `Re: ${openMsg.subject}`;
+
     try {
-      let res;
-      if (matchedMember) {
-        res = await fetch("/api/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memberIds: [matchedMember.id], subject: openMsg.subject.startsWith("Re:") ? openMsg.subject : `Re: ${openMsg.subject}`, body: replyText }) });
+      if (replyMode === "replyAll") {
+        // Reply All: send to all participants
+        const allAddresses = getReplyAllAddresses(openMsg);
+        // Match against members first, then fall back to direct send for non-members
+        const memberRecipients = [];
+        const directRecipients = [];
+        allAddresses.forEach(email => {
+          const m = members.find(m => m.email?.toLowerCase() === email.toLowerCase());
+          if (m) memberRecipients.push(m.id);
+          else directRecipients.push(email);
+        });
+
+        // Send to matched members via batch API
+        if (memberRecipients.length) {
+          await fetch("/api/email", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ memberIds: memberRecipients, subject: replySubject, body: plainText, htmlBody: replyHtml }),
+          });
+        }
+        // Send to non-members directly
+        for (const email of directRecipients) {
+          await fetch("/api/email/reply", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ to: email, subject: replySubject, body: plainText, htmlBody: replyHtml }),
+          });
+        }
       } else {
-        res = await fetch("/api/email/reply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: replyToEmail, subject: openMsg.subject.startsWith("Re:") ? openMsg.subject : `Re: ${openMsg.subject}`, body: replyText }) });
+        // Regular reply — just to the sender
+        const replyToEmail = extractEmail(openMsg.from_address);
+        const matchedMember = members.find(m => m.email?.toLowerCase() === replyToEmail.toLowerCase());
+        if (matchedMember) {
+          await fetch("/api/email", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ memberIds: [matchedMember.id], subject: replySubject, body: plainText, htmlBody: replyHtml }),
+          });
+        } else {
+          await fetch("/api/email/reply", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ to: replyToEmail, subject: replySubject, body: plainText, htmlBody: replyHtml }),
+          });
+        }
       }
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      if (flash) flash("Reply sent!");
-      setShowReply(false); setReplyText(""); loadLog();
+
+      if (flash) flash(replyMode === "replyAll" ? "Reply All sent!" : "Reply sent!");
+      setReplyMode(null); setReplyHtml(""); loadLog();
     } catch (e) {
       if (flash) flash(`Failed to send: ${e.message}`);
     } finally { setReplySending(false); }
@@ -192,16 +323,12 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: "1px solid #334155", background: "#0f172a40" }}>
             <div style={{ color: "#f1f5f9", fontSize: "15px", fontWeight: "600" }}>Saved Lists</div>
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <div onClick={() => { setEmailPre([]); setShowEM(true); setShowListManager(false); }} style={{ ...BTN("linear-gradient(135deg,#3b82f6,#6366f1)"), fontSize: "12px", padding: "6px 12px" }}>
-                + Create New List
-              </div>
+              <div onClick={() => { setEmailPre([]); setShowEM(true); setShowListManager(false); }} style={{ ...BTN("linear-gradient(135deg,#3b82f6,#6366f1)"), fontSize: "12px", padding: "6px 12px" }}>+ Create New List</div>
               <div onClick={() => setShowListManager(false)} style={{ color: "#64748b", cursor: "pointer", fontSize: "18px", padding: "4px 6px" }}>✕</div>
             </div>
           </div>
           {lists.length === 0 ? (
-            <div style={{ padding: "32px", textAlign: "center", color: "#64748b", fontSize: "14px" }}>
-              No saved lists yet. Compose an email and save your recipient selection as a list.
-            </div>
+            <div style={{ padding: "32px", textAlign: "center", color: "#64748b", fontSize: "14px" }}>No saved lists yet. Compose an email and save your recipient selection as a list.</div>
           ) : (
             <div>
               {lists.map((list, i) => (
@@ -210,12 +337,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
                     <div style={{ color: "#f1f5f9", fontSize: "14px", fontWeight: "600", marginBottom: "2px" }}>{list.name}</div>
                     <div style={{ color: "#64748b", fontSize: "12px" }}>{list.member_ids.length} member{list.member_ids.length !== 1 ? "s" : ""}</div>
                   </div>
-                  <div
-                    onClick={() => { setEmailPre(list.member_ids); setShowEM(true); setShowListManager(false); }}
-                    style={{ ...BTN("#1e3a5f"), fontSize: "12px", padding: "6px 14px", color: "#93c5fd", border: "1px solid #3b82f640", whiteSpace: "nowrap" }}
-                  >
-                    Email This List
-                  </div>
+                  <div onClick={() => { setEmailPre(list.member_ids); setShowEM(true); setShowListManager(false); }} style={{ ...BTN("#1e3a5f"), fontSize: "12px", padding: "6px 14px", color: "#93c5fd", border: "1px solid #3b82f640", whiteSpace: "nowrap" }}>Email This List</div>
                   <DelButton onClick={() => deleteList(list.id)} title="Delete list" />
                 </div>
               ))}
@@ -244,6 +366,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
           </div>
           <div style={{ padding: "12px 20px", borderBottom: "1px solid #1e293b", background: "#0f172a20" }}>
             <div style={{ color: "#94a3b8", fontSize: "13px", marginBottom: "2px" }}><span style={{ color: "#64748b" }}>From: </span>{openMsg.from_address}</div>
+            {openMsg.to_address && <div style={{ color: "#94a3b8", fontSize: "13px", marginBottom: "2px" }}><span style={{ color: "#64748b" }}>To: </span>{openMsg.to_address}</div>}
             <div style={{ color: "#64748b", fontSize: "12px" }}>{fmtDate(openMsg.received_at)}</div>
           </div>
           <div style={{ padding: "20px", minHeight: "80px" }}>
@@ -253,19 +376,34 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
               <div style={{ color: "#475569", fontSize: "13px", fontStyle: "italic" }}>No message body</div>
             )}
           </div>
-          {showReply ? (
+
+          {/* Reply / Reply All area */}
+          {replyMode ? (
             <div style={{ padding: "16px 20px", borderTop: "1px solid #334155", background: "#0f172a30" }}>
-              <textarea value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="Write your reply..." style={{ width: "100%", minHeight: "100px", background: "#0f172a", border: "1px solid #334155", borderRadius: "8px", color: "#f1f5f9", fontSize: "14px", padding: "10px 12px", resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }} />
+              <div style={{ marginBottom: "8px", fontSize: "13px", color: "#64748b" }}>
+                {replyMode === "replyAll"
+                  ? `Replying to all: ${getReplyAllAddresses(openMsg).join(", ")}`
+                  : `Replying to: ${extractEmail(openMsg.from_address)}`}
+              </div>
+              <ReplyEditor onChange={setReplyHtml} />
               <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
-                <div onClick={sendReply} style={{ ...BTN("linear-gradient(135deg,#3b82f6,#6366f1)"), display: "flex", alignItems: "center", gap: "6px", opacity: replySending ? 0.6 : 1, pointerEvents: replySending ? "none" : "auto" }}>
-                  <Icons.Send />{replySending ? "Sending…" : "Send Reply"}
+                <div onClick={sendReply} style={{ ...BTN("linear-gradient(135deg,#3b82f6,#6366f1)"), display: "flex", alignItems: "center", gap: "6px", opacity: (replyHtml && !replySending) ? 1 : 0.5, pointerEvents: (replyHtml && !replySending) ? "auto" : "none" }}>
+                  <Icons.Send />{replySending ? "Sending…" : replyMode === "replyAll" ? "Send Reply All" : "Send Reply"}
                 </div>
-                <div onClick={() => { setShowReply(false); setReplyText(""); }} style={{ ...BTN("#334155"), color: "#94a3b8" }}>Cancel</div>
+                <div onClick={() => { setReplyMode(null); setReplyHtml(""); }} style={{ ...BTN("#334155"), color: "#94a3b8" }}>Cancel</div>
               </div>
             </div>
           ) : (
-            <div style={{ padding: "12px 20px", borderTop: "1px solid #334155" }}>
-              <div onClick={() => setShowReply(true)} style={{ ...BTN("#1e3a5f"), display: "inline-flex", alignItems: "center", gap: "6px", color: "#93c5fd", border: "1px solid #3b82f640" }}>↩ Reply</div>
+            <div style={{ padding: "12px 20px", borderTop: "1px solid #334155", display: "flex", gap: "8px" }}>
+              <div onClick={() => setReplyMode("reply")} style={{ ...BTN("#1e3a5f"), display: "inline-flex", alignItems: "center", gap: "6px", color: "#93c5fd", border: "1px solid #3b82f640" }}>
+                ↩ Reply
+              </div>
+              {/* Show Reply All if there are multiple participants */}
+              {getReplyAllAddresses(openMsg).length > 1 && (
+                <div onClick={() => setReplyMode("replyAll")} style={{ ...BTN("#1e293b"), display: "inline-flex", alignItems: "center", gap: "6px", color: "#94a3b8", border: "1px solid #334155" }}>
+                  ↩↩ Reply All
+                </div>
+              )}
             </div>
           )}
         </div>
