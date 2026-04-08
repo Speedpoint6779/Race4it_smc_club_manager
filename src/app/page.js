@@ -14,13 +14,18 @@ import { EmailPage } from "./components/pages/EmailPage";
 import { PaymentsPage } from "./components/pages/PaymentsPage";
 import { UsersPage } from "./components/pages/UsersPage";
 
+const SunIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>;
+const MoonIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>;
+
 export default function App() {
-  // Restore session from sessionStorage so page refresh doesn't log you out
   const [user, setUser] = useState(() => {
     try { return sessionStorage.getItem("smc_user") || null; } catch { return null; }
   });
   const [pg, setPg] = useState(() => {
     try { return sessionStorage.getItem("smc_pg") || "dashboard"; } catch { return "dashboard"; }
+  });
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem("smc_theme") || "light"; } catch { return "light"; }
   });
 
   const [un, setUn] = useState(""); const [pw, setPw] = useState(""); const [le, setLe] = useState("");
@@ -30,7 +35,14 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [selMode, setSelMode] = useState(false); const [sel, setSel] = useState([]);
 
-  // Persist user + current page to sessionStorage
+  // Apply theme to document
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try { localStorage.setItem("smc_theme", theme); } catch {}
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(t => t === "light" ? "dark" : "light");
+
   useEffect(() => {
     try {
       if (user) sessionStorage.setItem("smc_user", user);
@@ -85,63 +97,75 @@ export default function App() {
   ];
 
   if (loading) return (
-    <div style={{ minHeight: "100vh", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{ minHeight: "100vh", background: "var(--bg-body)", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ textAlign: "center" }}>
-        <div style={{ width: "36px", height: "36px", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: "11px", fontWeight: "800", margin: "0 auto 16px" }}>SMC</div>
-        <div style={{ color: "#94a3b8", fontSize: "14px" }}>Loading members...</div>
+        <div style={{ width: "36px", height: "36px", background: "var(--smc-gradient)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: "11px", fontWeight: "800", margin: "0 auto 16px" }}>SMC</div>
+        <div style={{ color: "var(--text-secondary)", fontSize: "15px" }}>Loading members...</div>
       </div>
     </div>
   );
 
   if (!user) return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#0f172a 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
-      <div style={{ width: "100%", maxWidth: "400px" }}>
+    <div style={{ minHeight: "100vh", background: "var(--login-bg)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
+      <div style={{ width: "100%", maxWidth: "420px" }}>
         <div style={{ textAlign: "center", marginBottom: "32px" }}>
-          <div style={{ width: "56px", height: "56px", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", borderRadius: "16px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", boxShadow: "0 8px 32px rgba(59,130,246,0.3)", color: "white", fontSize: "14px", fontWeight: "800" }}>SMC</div>
-          <h1 style={{ color: "#f1f5f9", fontSize: "24px", fontWeight: "700", margin: "0 0 4px" }}>SMC Club Manager</h1>
-          <p style={{ color: "#94a3b8", fontSize: "14px", margin: 0 }}>Sign in to manage your club</p>
+          <div style={{ width: "56px", height: "56px", background: "var(--smc-gradient)", borderRadius: "16px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", boxShadow: "0 8px 32px rgba(59,130,246,0.3)", color: "white", fontSize: "14px", fontWeight: "800" }}>SMC</div>
+          <h1 style={{ color: "var(--login-title)", fontSize: "26px", fontWeight: "700", margin: "0 0 4px" }}>SMC Club Manager</h1>
+          <p style={{ color: "var(--login-sub)", fontSize: "15px", margin: 0 }}>Sign in to manage your club</p>
         </div>
-        <div style={{ background: "#1e293b", borderRadius: "16px", padding: "32px", border: "1px solid #334155", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
-          {le && <div style={{ background: "#7f1d1d33", border: "1px solid #991b1b", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px", color: "#fca5a5", fontSize: "13px" }}>{le}</div>}
+        <div style={{ background: "var(--login-card-bg)", borderRadius: "16px", padding: "32px", border: "1px solid var(--login-card-border)", boxShadow: "0 20px 60px rgba(0,0,0,0.1)" }}>
+          {le && <div style={{ background: "var(--error-bg)", border: "1px solid var(--error-border)", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px", color: "var(--error-text)", fontSize: "14px" }}>{le}</div>}
           <div style={{ marginBottom: "16px" }}><label style={LS}>Username</label><input type="text" value={un} onChange={e => { setUn(e.target.value); setLe(""); }} onKeyDown={e => { if (e.key === "Enter") login(); }} placeholder="Enter username" style={IS} /></div>
           <div style={{ marginBottom: "24px" }}><label style={LS}>Password</label><input type="password" value={pw} onChange={e => { setPw(e.target.value); setLe(""); }} onKeyDown={e => { if (e.key === "Enter") login(); }} placeholder="Enter password" style={IS} /></div>
-          <div onClick={login} style={{ width: "100%", padding: "12px", background: "linear-gradient(135deg,#3b82f6,#6366f1)", color: "white", borderRadius: "8px", fontSize: "14px", fontWeight: "600", cursor: "pointer", textAlign: "center", boxSizing: "border-box" }}>Sign In</div>
-          <p style={{ textAlign: "center", color: "#64748b", fontSize: "12px", marginTop: "16px" }}>Default: admin / admin123</p>
+          <div onClick={login} style={{ width: "100%", padding: "12px", background: "var(--accent-gradient)", color: "white", borderRadius: "8px", fontSize: "15px", fontWeight: "600", cursor: "pointer", textAlign: "center", boxSizing: "border-box" }}>Sign In</div>
+          <p style={{ textAlign: "center", color: "var(--login-hint)", fontSize: "13px", marginTop: "16px" }}>Default: admin / admin123</p>
+        </div>
+        {/* Theme toggle on login page */}
+        <div style={{ textAlign: "center", marginTop: "16px" }}>
+          <div onClick={toggleTheme} style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 14px", borderRadius: "8px", cursor: "pointer", color: "var(--text-muted)", fontSize: "13px", background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+            {theme === "light" ? <MoonIcon /> : <SunIcon />}
+            {theme === "light" ? "Dark Mode" : "Light Mode"}
+          </div>
         </div>
       </div>
     </div>
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0f172a", display: "flex", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
-      {toast && <div style={{ position: "fixed", top: "20px", right: "20px", zIndex: 2000, background: "#065f46", color: "white", padding: "12px 20px", borderRadius: "10px", fontSize: "14px", fontWeight: "500", display: "flex", alignItems: "center", gap: "8px", boxShadow: "0 8px 32px rgba(0,0,0,0.3)" }}><Icons.Check />{toast}</div>}
+    <div style={{ minHeight: "100vh", background: "var(--bg-body)", display: "flex", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
+      {toast && <div style={{ position: "fixed", top: "20px", right: "20px", zIndex: 2000, background: "var(--bg-toast)", color: "white", padding: "12px 20px", borderRadius: "10px", fontSize: "15px", fontWeight: "500", display: "flex", alignItems: "center", gap: "8px", boxShadow: "0 8px 32px rgba(0,0,0,0.3)" }}><Icons.Check />{toast}</div>}
 
       {/* Sidebar */}
-      <div style={{ width: "220px", background: "#1e293b", borderRight: "1px solid #334155", padding: "20px 0", display: "flex", flexDirection: "column", flexShrink: 0 }}>
-        <div style={{ padding: "0 20px 24px", borderBottom: "1px solid #334155", marginBottom: "16px" }}>
+      <div style={{ width: "220px", background: "var(--bg-sidebar)", borderRight: "1px solid var(--border)", padding: "20px 0", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+        <div style={{ padding: "0 20px 24px", borderBottom: "1px solid var(--border)", marginBottom: "16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={{ width: "36px", height: "36px", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: "11px", fontWeight: "800" }}>SMC</div>
+            <div style={{ width: "36px", height: "36px", background: "var(--smc-gradient)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: "11px", fontWeight: "800" }}>SMC</div>
             <div>
-              <div style={{ color: "#f1f5f9", fontSize: "13px", fontWeight: "700" }}>SMC Club Manager</div>
-              <div style={{ color: "#64748b", fontSize: "11px" }}>{members.length} members</div>
+              <div style={{ color: "var(--text-heading)", fontSize: "14px", fontWeight: "700" }}>SMC Club Manager</div>
+              <div style={{ color: "var(--text-muted)", fontSize: "12px" }}>{members.length} members</div>
             </div>
           </div>
         </div>
         <nav style={{ flex: 1, padding: "0 12px" }}>
           {navItems.map(n => (
-            <div key={n.id} onClick={() => { setPg(n.id); setSelMode(false); setSel([]); }} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", borderRadius: "8px", cursor: "pointer", marginBottom: "4px", fontSize: "14px", fontWeight: pg === n.id ? "600" : "400", background: pg === n.id ? "linear-gradient(135deg,#3b82f620,#6366f120)" : "transparent", color: pg === n.id ? "#93c5fd" : "#94a3b8" }}>
+            <div key={n.id} onClick={() => { setPg(n.id); setSelMode(false); setSel([]); }} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", borderRadius: "8px", cursor: "pointer", marginBottom: "4px", fontSize: "15px", fontWeight: pg === n.id ? "600" : "400", background: pg === n.id ? "var(--nav-active-bg)" : "transparent", color: pg === n.id ? "var(--nav-active-text)" : "var(--nav-inactive-text)" }}>
               <n.icon />{n.label}
             </div>
           ))}
         </nav>
-        <div style={{ padding: "16px 12px", borderTop: "1px solid #334155", marginTop: "auto" }}>
+        <div style={{ padding: "12px", borderTop: "1px solid var(--border)", marginTop: "auto" }}>
+          {/* Theme toggle */}
+          <div onClick={toggleTheme} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", borderRadius: "8px", cursor: "pointer", marginBottom: "8px", color: "var(--text-muted)", fontSize: "14px" }}>
+            {theme === "light" ? <MoonIcon /> : <SunIcon />}
+            {theme === "light" ? "Dark Mode" : "Light Mode"}
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px" }}>
-            <div style={{ width: "32px", height: "32px", background: "#334155", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: "13px", fontWeight: "600" }}>{user[0]?.toUpperCase()}</div>
+            <div style={{ width: "32px", height: "32px", background: "var(--btn-secondary-bg)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-secondary)", fontSize: "14px", fontWeight: "600" }}>{user[0]?.toUpperCase()}</div>
             <div style={{ flex: 1 }}>
-              <div style={{ color: "#cbd5e1", fontSize: "13px", fontWeight: "500" }}>{user}</div>
-              <div style={{ color: "#64748b", fontSize: "11px" }}>Officer</div>
+              <div style={{ color: "var(--text-primary)", fontSize: "14px", fontWeight: "500" }}>{user}</div>
+              <div style={{ color: "var(--text-muted)", fontSize: "12px" }}>Officer</div>
             </div>
-            <div onClick={logout} style={{ color: "#64748b", cursor: "pointer", padding: "4px" }}><Icons.LogOut /></div>
+            <div onClick={logout} style={{ color: "var(--text-muted)", cursor: "pointer", padding: "4px" }}><Icons.LogOut /></div>
           </div>
         </div>
       </div>
