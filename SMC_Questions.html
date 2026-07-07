@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Senior Men's Club — Member Questionnaire</title>
+<style>
+  :root{
+    --ink:#17202b; --slate:#33414f; --muted:#5c6775; --line:#c4cdd7;
+    --rule:#8a97a6; --paper:#ffffff; --band:#eef4f8; --accent:#0f4c73;
+    --accent-dk:#0b3a58; --box:#3a4653; --check:#0f4c73;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{font-family:"Iowan Old Style","Palatino Linotype","Palatino",Georgia,serif;color:var(--ink);background:#e6e9ed;line-height:1.5;font-size:20px;-webkit-text-size-adjust:100%;}
+  .sheet{background:var(--paper);max-width:820px;margin:0 auto;padding:40px 44px 48px;box-shadow:0 2px 22px rgba(20,30,45,.12);}
+  header.mast{border-bottom:4px solid var(--accent);padding-bottom:20px;margin-bottom:14px;}
+  .eyebrow{font-family:"Helvetica Neue",Arial,sans-serif;text-transform:uppercase;letter-spacing:.24em;font-size:15px;font-weight:700;color:var(--accent);margin:0 0 10px;}
+  h1{font-size:44px;line-height:1.08;margin:0 0 14px;letter-spacing:-.01em;color:var(--ink);}
+  .subhead{font-size:21px;color:var(--slate);margin:0;line-height:1.5;}
+  .tagline{font-family:"Helvetica Neue",Arial,sans-serif;text-transform:uppercase;letter-spacing:.18em;font-size:14px;font-weight:600;color:var(--rule);margin-top:16px;}
+  .sec{margin-top:40px;}
+  .sec-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid var(--line);padding-bottom:10px;margin-bottom:20px;flex-wrap:wrap;}
+  .sec-num{font-family:"Helvetica Neue",Arial,sans-serif;font-weight:700;font-size:18px;color:#fff;background:var(--accent);padding:5px 13px;border-radius:4px;letter-spacing:.04em;}
+  .sec-title{font-family:"Helvetica Neue",Arial,sans-serif;text-transform:uppercase;letter-spacing:.09em;font-size:23px;font-weight:700;color:var(--slate);margin:0;}
+  .sec-note{font-family:"Helvetica Neue",Arial,sans-serif;font-size:16px;color:var(--muted);margin-left:auto;letter-spacing:.01em;}
+  .q{margin:0 0 22px;}
+  .q-label{font-family:"Helvetica Neue",Arial,sans-serif;font-weight:600;font-size:21px;color:var(--ink);margin:0 0 12px;line-height:1.4;}
+  .q-label .hint{font-weight:400;color:var(--muted);font-style:italic;font-size:18px;}
+  .opts{display:flex;flex-wrap:wrap;gap:10px 14px;font-family:"Helvetica Neue",Arial,sans-serif;font-size:20px;}
+  .opts.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;}
+  .opt{display:flex;align-items:center;gap:14px;color:var(--slate);background:#f6f8fa;border:2px solid #dbe2e9;border-radius:10px;padding:13px 16px;cursor:pointer;user-select:none;min-height:56px;transition:border-color .12s,background .12s;line-height:1.3;position:relative;}
+  .opt:hover{border-color:var(--accent);}
+  .opt input{position:absolute;opacity:0;width:1px;height:1px;}
+  .opt:focus-within{outline:3px solid var(--accent);outline-offset:2px;}
+  .box{width:26px;height:26px;border:2.5px solid var(--box);border-radius:6px;flex:0 0 auto;background:#fff;position:relative;}
+  .opt:has(input:checked){border-color:var(--accent);background:var(--band);}
+  .opt:has(input:checked) .box{background:var(--check);border-color:var(--check);}
+  .opt:has(input:checked) .box::after{content:"";position:absolute;left:7px;top:2px;width:8px;height:15px;border:solid #fff;border-width:0 3.5px 3.5px 0;transform:rotate(45deg);}
+  .opt.other{grid-column:1 / -1;}
+  .opt.other input[type=text]{position:static;opacity:1;width:auto;height:auto;border:none;border-bottom:2px solid var(--rule);background:transparent;font-size:19px;font-family:inherit;flex:1;padding:2px 4px;color:var(--ink);min-width:80px;}
+  .opt.other input[type=text]:focus{outline:none;border-bottom-color:var(--accent);}
+  .keyq{background:var(--band);border:2px solid #bcd4e4;border-left:6px solid var(--accent);border-radius:10px;padding:18px 20px 20px;margin:6px 0 22px;}
+  .keyq .tag{font-family:"Helvetica Neue",Arial,sans-serif;font-size:14px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--accent);display:block;margin-bottom:8px;}
+  .writein textarea{width:100%;font-family:inherit;font-size:19px;color:var(--ink);border:2px solid #dbe2e9;border-radius:10px;padding:12px 14px;resize:vertical;min-height:70px;background:#f6f8fa;line-height:1.5;}
+  .writein textarea:focus{outline:none;border-color:var(--accent);background:#fff;}
+  .namerow{margin-top:14px;font-family:"Helvetica Neue",Arial,sans-serif;font-size:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .namerow label{font-weight:600;color:var(--slate);}
+  .namerow .opt-note{font-style:italic;color:var(--muted);font-size:17px;}
+  .namerow input{flex:1;min-width:220px;font-family:inherit;font-size:20px;border:2px solid #dbe2e9;border-radius:10px;padding:12px 14px;background:#f6f8fa;color:var(--ink);}
+  .namerow input:focus{outline:none;border-color:var(--accent);background:#fff;}
+  .actions{margin-top:40px;border-top:3px solid var(--accent);padding-top:26px;text-align:center;}
+  .submit-btn{font-family:"Helvetica Neue",Arial,sans-serif;font-size:23px;font-weight:700;letter-spacing:.02em;color:#fff;background:var(--accent);border:none;border-radius:12px;padding:20px 52px;cursor:pointer;transition:background .12s;min-height:64px;}
+  .submit-btn:hover{background:var(--accent-dk);}
+  .submit-btn:disabled{opacity:.6;cursor:default;}
+  .submit-btn:focus-visible{outline:3px solid var(--accent-dk);outline-offset:3px;}
+  .closing{font-family:"Helvetica Neue",Arial,sans-serif;font-size:18px;color:var(--muted);margin-top:18px;line-height:1.5;}
+  .closing strong{color:var(--slate);}
+  .form-msg{font-family:"Helvetica Neue",Arial,sans-serif;font-size:19px;margin-top:16px;padding:14px 18px;border-radius:10px;display:none;}
+  .form-msg.ok{display:block;background:#e7f3ea;border:2px solid #8bc39b;color:#1f6b39;}
+  .form-msg.err{display:block;background:#fbeaea;border:2px solid #d99a9a;color:#9b2c2c;}
+  .thanks{display:none;text-align:center;padding:30px 10px;}
+  .thanks h2{font-size:34px;color:var(--accent);margin:0 0 12px;}
+  .thanks p{font-size:21px;color:var(--slate);line-height:1.5;margin:0;}
+  @media (max-width:640px){
+    body{font-size:19px;} .sheet{padding:26px 20px 32px;} h1{font-size:34px;}
+    .subhead{font-size:19px;} .opts.grid2{grid-template-columns:1fr;}
+    .sec-title{font-size:20px;} .submit-btn{width:100%;padding:20px;}
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <header class="mast">
+    <p class="eyebrow">Member Questionnaire</p>
+    <h1>Help Us Build a Stronger Club</h1>
+    <p class="subhead">Five minutes, mostly checkboxes. Your honest answers shape what we do next — and we'll report back to the whole club on what you told us and what we're changing.</p>
+    <p class="tagline">Senior Men's Club of Wilmington · Fellowship · Friendship · Community</p>
+  </header>
+
+  <form id="smcForm">
+
+  <section class="sec">
+    <div class="sec-head"><span class="sec-num">1</span><h2 class="sec-title">About You</h2></div>
+    <div class="q">
+      <p class="q-label">How long have you been a member?</p>
+      <div class="opts">
+        <label class="opt"><input type="radio" name="tenure" value="Under 2 years"><span class="box"></span>Under 2 years</label>
+        <label class="opt"><input type="radio" name="tenure" value="2-5 years"><span class="box"></span>2–5 years</label>
+        <label class="opt"><input type="radio" name="tenure" value="6-10 years"><span class="box"></span>6–10 years</label>
+        <label class="opt"><input type="radio" name="tenure" value="10+ years"><span class="box"></span>10+ years</label>
+      </div>
+    </div>
+    <div class="q">
+      <p class="q-label">How often do you attend the Friday meeting?</p>
+      <div class="opts">
+        <label class="opt"><input type="radio" name="attendance" value="Almost every week"><span class="box"></span>Almost every week</label>
+        <label class="opt"><input type="radio" name="attendance" value="A couple times a month"><span class="box"></span>A couple times a month</label>
+        <label class="opt"><input type="radio" name="attendance" value="Rarely"><span class="box"></span>Rarely</label>
+        <label class="opt"><input type="radio" name="attendance" value="Stopped coming"><span class="box"></span>I've stopped coming</label>
+      </div>
+    </div>
+    <div class="keyq" id="reasonBlock" style="display:none;">
+      <span class="tag">Most important — please answer if you attend rarely or have stopped</span>
+      <p class="q-label">What's the main reason you don't come more often?</p>
+      <div class="opts">
+        <label class="opt"><input type="radio" name="reason_away" value="Health or mobility"><span class="box"></span>Health or mobility</label>
+        <label class="opt"><input type="radio" name="reason_away" value="Not worth the time"><span class="box"></span>Not worth the time</label>
+        <label class="opt"><input type="radio" name="reason_away" value="Don't know many people"><span class="box"></span>Don't know many people</label>
+        <label class="opt"><input type="radio" name="reason_away" value="Schedule conflict"><span class="box"></span>Schedule conflict</label>
+        <label class="opt"><input type="radio" name="reason_away" value="Speakers not interesting"><span class="box"></span>Speakers not interesting</label>
+        <label class="opt other"><input type="radio" name="reason_away" value="Other"><span class="box"></span>Other:&nbsp;<input type="text" name="reason_away_other" placeholder="…"></label>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><span class="sec-num">2</span><h2 class="sec-title">Friendship &amp; Connection</h2></div>
+    <div class="q">
+      <p class="q-label">How many members do you know well enough to call?</p>
+      <div class="opts">
+        <label class="opt"><input type="radio" name="know_well" value="0-2"><span class="box"></span>0–2</label>
+        <label class="opt"><input type="radio" name="know_well" value="3-5"><span class="box"></span>3–5</label>
+        <label class="opt"><input type="radio" name="know_well" value="6-10"><span class="box"></span>6–10</label>
+        <label class="opt"><input type="radio" name="know_well" value="10+"><span class="box"></span>10+</label>
+      </div>
+    </div>
+    <div class="q">
+      <p class="q-label">Would you like to know more members than you do now?</p>
+      <div class="opts">
+        <label class="opt"><input type="radio" name="want_more_friends" value="Yes"><span class="box"></span>Yes</label>
+        <label class="opt"><input type="radio" name="want_more_friends" value="Fine as is"><span class="box"></span>I'm fine as is</label>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><span class="sec-num">3</span><h2 class="sec-title">Small Interest Groups</h2><span class="sec-note">Check every one you'd join</span></div>
+    <div class="q">
+      <p class="q-label">Small groups that meet on their own, outside the Friday meeting. <span class="hint">Check all that apply.</span></p>
+      <div class="opts grid2">
+        <label class="opt"><input type="checkbox" name="groups" value="Post-meeting lunch"><span class="box"></span>Post-meeting lunch group</label>
+        <label class="opt"><input type="checkbox" name="groups" value="Weekday coffee meetup"><span class="box"></span>Weekday coffee meetup</label>
+        <label class="opt"><input type="checkbox" name="groups" value="Golf"><span class="box"></span>Golf</label>
+        <label class="opt"><input type="checkbox" name="groups" value="Cards"><span class="box"></span>Cards (bridge, poker, etc.)</label>
+        <label class="opt"><input type="checkbox" name="groups" value="Walking/hiking"><span class="box"></span>Walking / hiking</label>
+        <label class="opt"><input type="checkbox" name="groups" value="Book/discussion"><span class="box"></span>Book or discussion group</label>
+        <label class="opt"><input type="checkbox" name="groups" value="Wine/beer tasting"><span class="box"></span>Wine / beer tasting</label>
+        <label class="opt"><input type="checkbox" name="groups" value="Woodworking/fix-it"><span class="box"></span>Woodworking / fix-it</label>
+        <label class="opt"><input type="checkbox" name="groups" value="Investing/finance"><span class="box"></span>Investing / finance</label>
+        <label class="opt"><input type="checkbox" name="groups" value="Fishing"><span class="box"></span>Fishing</label>
+        <label class="opt other"><input type="checkbox" name="groups" value="Other"><span class="box"></span>Other:&nbsp;<input type="text" name="groups_other" placeholder="…"></label>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><span class="sec-num">4</span><h2 class="sec-title">Club Events &amp; Gatherings</h2></div>
+    <div class="q">
+      <p class="q-label">Did you attend this year's barbecue event?</p>
+      <div class="opts">
+        <label class="opt"><input type="radio" name="bbq" value="Yes"><span class="box"></span>Yes</label>
+        <label class="opt"><input type="radio" name="bbq" value="No - couldn't make it"><span class="box"></span>No — couldn't make it</label>
+        <label class="opt"><input type="radio" name="bbq" value="No - didn't know"><span class="box"></span>No — didn't know about it</label>
+        <label class="opt"><input type="radio" name="bbq" value="No - not my thing"><span class="box"></span>No — not my thing</label>
+      </div>
+    </div>
+    <div class="q">
+      <p class="q-label">Which events would you turn out for? <span class="hint">Check all that apply.</span></p>
+      <div class="opts grid2">
+        <label class="opt"><input type="checkbox" name="events" value="Barbecue/pig pick"><span class="box"></span>Barbecue / pig pick</label>
+        <label class="opt"><input type="checkbox" name="events" value="Holiday dinner"><span class="box"></span>Holiday dinner</label>
+        <label class="opt"><input type="checkbox" name="events" value="Oyster roast/fall cookout"><span class="box"></span>Oyster roast / fall cookout</label>
+        <label class="opt"><input type="checkbox" name="events" value="Ballgame/sporting"><span class="box"></span>Ballgame / sporting outing</label>
+        <label class="opt"><input type="checkbox" name="events" value="Brewery/distillery tour"><span class="box"></span>Brewery / distillery tour</label>
+        <label class="opt"><input type="checkbox" name="events" value="Museum/historical"><span class="box"></span>Museum or historical outing</label>
+        <label class="opt"><input type="checkbox" name="events" value="Day trips"><span class="box"></span>Day trips</label>
+        <label class="opt"><input type="checkbox" name="events" value="Happy hour"><span class="box"></span>Casual happy hour</label>
+        <label class="opt other"><input type="checkbox" name="events" value="Other"><span class="box"></span>Other:&nbsp;<input type="text" name="events_other" placeholder="…"></label>
+      </div>
+    </div>
+    <div class="q">
+      <p class="q-label">Would you attend more events if family and spouses were included?</p>
+      <div class="opts">
+        <label class="opt"><input type="radio" name="family" value="Yes"><span class="box"></span>Yes</label>
+        <label class="opt"><input type="radio" name="family" value="Doesn't matter"><span class="box"></span>Doesn't matter to me</label>
+        <label class="opt"><input type="radio" name="family" value="Prefer men-only"><span class="box"></span>I prefer men-only events</label>
+      </div>
+    </div>
+    <div class="q">
+      <p class="q-label">How many events beyond Friday might you realistically attend per year?</p>
+      <div class="opts">
+        <label class="opt"><input type="radio" name="event_count" value="1-2"><span class="box"></span>1–2</label>
+        <label class="opt"><input type="radio" name="event_count" value="3-4"><span class="box"></span>3–4</label>
+        <label class="opt"><input type="radio" name="event_count" value="5+"><span class="box"></span>5 or more</label>
+        <label class="opt"><input type="radio" name="event_count" value="None"><span class="box"></span>None</label>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><span class="sec-num">5</span><h2 class="sec-title">Friday Speakers</h2></div>
+    <div class="q">
+      <p class="q-label">How would you rate our speakers overall?</p>
+      <div class="opts">
+        <label class="opt"><input type="radio" name="speakers" value="Great"><span class="box"></span>Great</label>
+        <label class="opt"><input type="radio" name="speakers" value="Good"><span class="box"></span>Good</label>
+        <label class="opt"><input type="radio" name="speakers" value="Mixed"><span class="box"></span>Mixed</label>
+        <label class="opt"><input type="radio" name="speakers" value="Often not for me"><span class="box"></span>Often not for me</label>
+      </div>
+    </div>
+    <div class="q">
+      <p class="q-label">What topics would you most want to hear? <span class="hint">Check all that apply.</span></p>
+      <div class="opts grid2">
+        <label class="opt"><input type="checkbox" name="topics" value="History"><span class="box"></span>History</label>
+        <label class="opt"><input type="checkbox" name="topics" value="Travel"><span class="box"></span>Travel</label>
+        <label class="opt"><input type="checkbox" name="topics" value="Health & aging"><span class="box"></span>Health &amp; aging</label>
+        <label class="opt"><input type="checkbox" name="topics" value="Finance"><span class="box"></span>Finance</label>
+        <label class="opt"><input type="checkbox" name="topics" value="Local issues"><span class="box"></span>Local issues</label>
+        <label class="opt"><input type="checkbox" name="topics" value="Science & tech"><span class="box"></span>Science &amp; tech</label>
+        <label class="opt"><input type="checkbox" name="topics" value="Military"><span class="box"></span>Military</label>
+        <label class="opt"><input type="checkbox" name="topics" value="Sports"><span class="box"></span>Sports</label>
+        <label class="opt"><input type="checkbox" name="topics" value="Music & arts"><span class="box"></span>Music &amp; arts</label>
+        <label class="opt"><input type="checkbox" name="topics" value="Humor/entertainment"><span class="box"></span>Humor / entertainment</label>
+        <label class="opt other"><input type="checkbox" name="topics" value="Other"><span class="box"></span>Other:&nbsp;<input type="text" name="topics_other" placeholder="…"></label>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><span class="sec-num">6</span><h2 class="sec-title">Lend a Hand &amp; Final Thoughts</h2></div>
+    <div class="q">
+      <p class="q-label">Would you help organize or host a small group or event?</p>
+      <div class="opts">
+        <label class="opt"><input type="radio" name="volunteer" value="Yes"><span class="box"></span>Yes</label>
+        <label class="opt"><input type="radio" name="volunteer" value="Maybe"><span class="box"></span>Maybe — tell me more</label>
+        <label class="opt"><input type="radio" name="volunteer" value="No"><span class="box"></span>No</label>
+      </div>
+    </div>
+    <div class="q writein">
+      <p class="q-label">One thing that would make the club more valuable to you:</p>
+      <textarea name="value_open" rows="2"></textarea>
+    </div>
+    <div class="q writein">
+      <p class="q-label">One thing we should stop, start, or change:</p>
+      <textarea name="change_open" rows="2"></textarea>
+    </div>
+    <div class="namerow">
+      <label for="nm">Name</label>
+      <span class="opt-note">(optional)</span>
+      <input id="nm" name="member_name" type="text" placeholder="Your name">
+    </div>
+  </section>
+
+  <div class="actions">
+    <button type="submit" class="submit-btn" id="submitBtn">Submit My Answers</button>
+    <p class="closing"><strong>Thank you.</strong> Your input helps us build a stronger club for everyone.</p>
+    <div class="form-msg" id="formMsg"></div>
+  </div>
+
+  </form>
+
+  <div class="thanks" id="thanksPanel">
+    <h2>Thank you!</h2>
+    <p>Your answers have been received. We'll share what the club told us — and what we're changing — at an upcoming Friday meeting.</p>
+  </div>
+
+</div>
+
+<script>
+  /* =========================================================
+     SETUP STEP: paste your Google Apps Script Web App URL
+     between the quotes below. It looks like:
+     https://script.google.com/macros/s/AKfy..../exec
+     Until you do, submissions won't be saved.
+     ========================================================= */
+  const SHEET_ENDPOINT = "https://script.google.com/macros/s/AKfycbwzwAZW2HtrNJMCIXAJw-cnI43zni89aJKqATVily--oe8ZiIQoeaAHd6sIkX29oZT5/exec";
+
+  const form = document.getElementById('smcForm');
+  const btn = document.getElementById('submitBtn');
+  const msg = document.getElementById('formMsg');
+  const thanks = document.getElementById('thanksPanel');
+
+  // Show the "main reason" question only if they attend less than every week.
+  const reasonBlock = document.getElementById('reasonBlock');
+  document.querySelectorAll('input[name="attendance"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      var val = document.querySelector('input[name="attendance"]:checked');
+      if(val && val.value !== 'Almost every week'){
+        reasonBlock.style.display = 'block';
+      } else {
+        reasonBlock.style.display = 'none';
+        // clear any selection so hidden answers aren't submitted
+        document.querySelectorAll('input[name="reason_away"]').forEach(function(x){x.checked=false;});
+        var ro = document.querySelector('input[name="reason_away_other"]'); if(ro) ro.value='';
+      }
+    });
+  });
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    msg.className = 'form-msg';
+    msg.textContent = '';
+
+    if(SHEET_ENDPOINT.indexOf('PASTE_YOUR') === 0){
+      msg.className = 'form-msg err';
+      msg.textContent = 'Setup not finished: the Google Sheet link has not been added yet.';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+
+    const data = {};
+    const fd = new FormData(form);
+    for(const key of fd.keys()){
+      const all = fd.getAll(key).filter(function(v){return v !== '';});
+      if(all.length) data[key] = all.join('; ');
+    }
+    // Fold "Other:" free text into its parent field (parent has a column; _other may not).
+    [['groups','groups_other'],['events','events_other'],['topics','topics_other'],['reason_away','reason_away_other']].forEach(function(pair){
+      var parent = pair[0], other = pair[1];
+      var txt = (data[other]||'').trim();
+      if(txt){
+        // replace a bare "Other" token with "Other: <text>", or append if not present
+        if(data[parent]){
+          if(/(^|; )Other($|;)/.test(data[parent])){
+            data[parent] = data[parent].replace(/Other/, 'Other: ' + txt);
+          } else {
+            data[parent] += '; Other: ' + txt;
+          }
+        } else {
+          data[parent] = 'Other: ' + txt;
+        }
+      }
+      delete data[other];
+    });
+    data.submitted_at = new Date().toISOString();
+
+    fetch(SHEET_ENDPOINT, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify(data)
+    })
+    .then(function(){
+      form.style.display = 'none';
+      thanks.style.display = 'block';
+      window.scrollTo({top:0, behavior:'smooth'});
+    })
+    .catch(function(){
+      btn.disabled = false;
+      btn.textContent = 'Submit My Answers';
+      msg.className = 'form-msg err';
+      msg.textContent = 'Sorry — something went wrong sending your answers. Please try again, or let us know at a Friday meeting.';
+    });
+  });
+</script>
+</body>
+</html>
