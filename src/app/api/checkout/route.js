@@ -2,6 +2,9 @@ import Stripe from 'stripe';
 import { getDb } from '../db';
 import { NextResponse } from 'next/server';
 
+// Data endpoint: never serve a build-time cached response.
+export const dynamic = 'force-dynamic';
+
 // Public checkout endpoint for the Annual Dinner registration on seniormensclub.org.
 // POST  - create a Stripe Checkout Session for $25 x tickets, after a capacity check
 // GET    - ?session_id=... returns payment status for the confirmation page;

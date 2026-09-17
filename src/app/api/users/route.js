@@ -1,6 +1,9 @@
 import { getDb, ensureTables } from '../db';
 import { NextResponse } from 'next/server';
 
+// Data endpoint: never serve a build-time cached response.
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const sql = getDb();

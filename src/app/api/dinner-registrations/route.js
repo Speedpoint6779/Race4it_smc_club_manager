@@ -1,6 +1,9 @@
 import { getDb } from '../db';
 import { NextResponse } from 'next/server';
 
+// Data endpoint: never serve a build-time cached response.
+export const dynamic = 'force-dynamic';
+
 // Read-only list of PAID Annual Dinner registrations for the manager app roster page.
 export const runtime = 'nodejs';
 

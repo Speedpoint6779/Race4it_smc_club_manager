@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { getDb, ensureTables } from '../../db';
 
+// Data endpoint: never serve a build-time cached response.
+export const dynamic = 'force-dynamic';
+
 const FORWARD_TO = 'george@nctaylors.com';
 const FROM       = process.env.EMAIL_FROM || 'SMC Club Manager <club@seniormensclub.org>';
 
