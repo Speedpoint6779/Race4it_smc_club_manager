@@ -1,6 +1,9 @@
 import { getDb, ensureTables } from '../../db';
 import { NextResponse } from 'next/server';
 
+// Data endpoint: never serve a build-time cached response.
+export const dynamic = 'force-dynamic';
+
 const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQYVapvyoREErPS7Y_sVrObT3cfIrUCojg1GdX5FjGHaYJne8wr4YkYOfPLWDpSbJxqwWZAKu1qwQ5-/pub?output=csv';
 
 function parseCSVLine(line) {

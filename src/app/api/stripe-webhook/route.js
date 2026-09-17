@@ -3,6 +3,9 @@ import { Resend } from 'resend';
 import { getDb } from '../db';
 import { NextResponse } from 'next/server';
 
+// Data endpoint: never serve a build-time cached response.
+export const dynamic = 'force-dynamic';
+
 // Stripe webhook: marks a dinner registration paid, then emails the guest a
 // confirmation and notifies the events team. Called server-to-server by Stripe.
 export const runtime = 'nodejs';

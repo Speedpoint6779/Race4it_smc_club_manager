@@ -1,6 +1,9 @@
 import { getDb, ensureTables } from '../db';
 import { NextResponse } from 'next/server';
 
+// Data endpoint: never serve a build-time cached response.
+export const dynamic = 'force-dynamic';
+
 // Public endpoint for the member directory on seniormensclub.org.
 // GET  - list active members (all contact info) for the password-protected directory
 // POST - add a new member (first/last/email required, phone optional)

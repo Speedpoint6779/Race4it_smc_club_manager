@@ -1,6 +1,9 @@
 import { getDb, ensureTables } from '../db';
 import { NextResponse } from 'next/server';
 
+// Data endpoint: never serve a build-time cached response.
+export const dynamic = 'force-dynamic';
+
 const SEED_MEMBERS = [
   { f:'Stan', l:'Abramski', e:'jabramski1442@gmail.com', p:'' },
   { f:'Larry', l:'Anderson', e:'lfandersonjr@gmail.com', p:'2026-01-01' },

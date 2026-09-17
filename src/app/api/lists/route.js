@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getDb, ensureTables } from '../db';
 
+// Data endpoint: never serve a build-time cached response.
+export const dynamic = 'force-dynamic';
+
 // GET /api/lists — fetch all saved email lists
 export async function GET() {
   try {
