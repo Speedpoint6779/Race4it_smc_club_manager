@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Icons } from "../Icons";
-import { BTN, HS, Stat } from "../ui";
+import { BTN, HS, Stat, Confirm } from "../ui";
+import { DinnerModal, TICKET_PRICE } from "../DinnerModal";
 
 const CAPACITY = 100;
 
@@ -20,6 +21,9 @@ export function DinnerPage({ flash }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reloading, setReloading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [editReg, setEditReg] = useState(null);
+  const [confDel, setConfDel] = useState(null);
 
   const load = async (announce) => {
     if (announce) setReloading(true);
@@ -49,19 +53,55 @@ export function DinnerPage({ flash }) {
       guests += row.tickets || 0;
       collected += row.amount || 0;
       tallyEntree(row.memberEntree);
-      if ((row.tickets || 1) >= 2) tallyEntree(row.guestEntree);
+      (row.guests || []).forEach(g => tallyEntree(g.entree));
     }
     return { guests, collected, beef, fish, other, remaining: Math.max(0, CAPACITY - guests) };
   }, [rows]);
 
+  const saveReg = async (reg) => {
+    const isEdit = !!reg.id;
+    const r = await fetch("/api/dinner-registrations", {
+      method: isEdit ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reg),
+    });
+    if (!r.ok) throw new Error("save failed");
+    await load(false);
+    setShowModal(false); setEditReg(null);
+    flash(isEdit ? "Registration updated" : "Registration added");
+  };
+
+  const delReg = async (reg) => {
+    try {
+      const r = await fetch("/api/dinner-registrations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: reg.id }),
+      });
+      if (!r.ok) throw new Error("delete failed");
+      setRows(p => p.filter(x => x.id !== reg.id));
+      flash("Registration removed");
+    } catch (e) {
+      flash("Could not remove registration");
+    } finally {
+      setConfDel(null);
+    }
+  };
+
   const downloadCsv = () => {
-    const headers = ["Member", "Guest", "Tickets", "Member entree", "Guest entree", "First car", "Email", "Phone", "Amount", "Paid"];
+    const most = rows.reduce((n, r) => Math.max(n, (r.guests || []).length), 0);
+    const headers = ["Member", "Member entree", "Tickets"];
+    for (let i = 1; i <= most; i++) headers.push("Guest " + i, "Guest " + i + " entree");
+    headers.push("First car", "Email", "Phone", "Amount", "Method", "Paid");
     const lines = [headers.join(",")];
     for (const r of rows) {
-      lines.push([
-        r.memberName, r.guestName, r.tickets, r.memberEntree, r.guestEntree,
-        r.car, r.email, r.phone, "$" + (r.amount || 0), fmtDateTime(r.paidAt),
-      ].map(csvCell).join(","));
+      const cells = [r.memberName, r.memberEntree, r.tickets];
+      for (let i = 0; i < most; i++) {
+        const g = (r.guests || [])[i];
+        cells.push(g ? g.name : "", g ? g.entree : "");
+      }
+      cells.push(r.car, r.email, r.phone, "$" + (r.amount || 0), r.paymentMethod || "", fmtDateTime(r.paidAt));
+      lines.push(cells.map(csvCell).join(","));
     }
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -71,8 +111,9 @@ export function DinnerPage({ flash }) {
     URL.revokeObjectURL(url);
   };
 
-  const cols = "1.3fr 1.1fr 70px 1.4fr 1.3fr 1.4fr 110px";
+  const cols = "1.2fr 1.1fr 70px 1.4fr 1.2fr 1.3fr 100px 80px";
   const cell = { padding: "12px 14px", fontSize: "14px", color: "var(--text-primary)", borderTop: "1px solid var(--border)" };
+  const dash = <span style={{ color: "var(--text-muted)" }}>&mdash;</span>;
 
   return (
     <div>
@@ -85,8 +126,11 @@ export function DinnerPage({ flash }) {
           <div onClick={() => load(true)} style={{ ...BTN("var(--btn-secondary-bg)", "var(--btn-secondary-text)"), display: "flex", alignItems: "center", gap: "6px", opacity: reloading ? 0.5 : 1, pointerEvents: reloading ? "none" : "auto" }}>
             <Icons.Refresh />{reloading ? "Refreshing..." : "Refresh"}
           </div>
-          <div onClick={rows.length ? downloadCsv : undefined} style={{ ...BTN("var(--accent-gradient)"), display: "flex", alignItems: "center", gap: "6px", opacity: rows.length ? 1 : 0.5, pointerEvents: rows.length ? "auto" : "none" }}>
+          <div onClick={rows.length ? downloadCsv : undefined} style={{ ...BTN("var(--btn-secondary-bg)", "var(--btn-secondary-text)"), display: "flex", alignItems: "center", gap: "6px", opacity: rows.length ? 1 : 0.5, pointerEvents: rows.length ? "auto" : "none" }}>
             <Icons.List />Download CSV
+          </div>
+          <div onClick={() => { setEditReg(null); setShowModal(true); }} style={{ ...BTN("var(--accent-gradient)"), display: "flex", alignItems: "center", gap: "6px" }}>
+            <Icons.Plus />Add Registration
           </div>
         </div>
       </div>
@@ -100,35 +144,81 @@ export function DinnerPage({ flash }) {
 
       <div style={{ background: "var(--bg-card)", borderRadius: "12px", border: "1px solid var(--border)", overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
-          <div style={{ minWidth: "860px" }}>
+          <div style={{ minWidth: "940px" }}>
             <div style={{ display: "grid", gridTemplateColumns: cols, background: "var(--bg-input)" }}>
-              {["Member", "Guest", "Tickets", "Dinners", "First car", "Contact", "Paid"].map(h => (
-                <div key={h} style={HS}>{h}</div>
+              {["Member", "Guests", "Tickets", "Dinners", "First car", "Contact", "Paid", ""].map((h, i) => (
+                <div key={i} style={HS}>{h}</div>
               ))}
             </div>
             {loading ? (
               <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)", fontSize: "15px" }}>Loading registrations...</div>
             ) : rows.length === 0 ? (
               <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)", fontSize: "15px" }}>No paid registrations yet.</div>
-            ) : rows.map(r => (
-              <div key={r.id} style={{ display: "grid", gridTemplateColumns: cols, alignItems: "center" }}>
-                <div style={{ ...cell, fontWeight: "600" }}>{r.memberName}</div>
-                <div style={cell}>{r.guestName || <span style={{ color: "var(--text-muted)" }}>&mdash;</span>}</div>
-                <div style={cell}>{r.tickets}</div>
-                <div style={cell}>
-                  {r.memberEntree}{r.tickets >= 2 && r.guestEntree ? <span style={{ color: "var(--text-muted)" }}>{" + " + r.guestEntree}</span> : null}
+            ) : rows.map(r => {
+              const gs = r.guests || [];
+              return (
+                <div key={r.id} style={{ display: "grid", gridTemplateColumns: cols, alignItems: "center" }}>
+                  <div style={{ ...cell, fontWeight: "600" }}>{r.memberName}</div>
+                  <div style={cell}>
+                    {gs.length === 0 ? dash : (
+                      <>
+                        <div>{gs[0].name}</div>
+                        {gs.length > 1 && (
+                          <div style={{ color: "var(--text-muted)", fontSize: "13px" }}>
+                            {gs.slice(1).map(g => g.name).join(", ")}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  <div style={cell}>{r.tickets}</div>
+                  <div style={cell}>
+                    {r.memberEntree}
+                    {gs.length ? <span style={{ color: "var(--text-muted)" }}>{" + " + gs.map(g => g.entree).join(" + ")}</span> : null}
+                  </div>
+                  <div style={cell}>{r.car || dash}</div>
+                  <div style={cell}>
+                    <div><a href={"mailto:" + r.email} style={{ color: "var(--text-primary)", textDecoration: "none" }}>{r.email}</a></div>
+                    {r.phone ? <div style={{ color: "var(--text-muted)", fontSize: "13px" }}>{r.phone}</div> : null}
+                  </div>
+                  <div style={{ ...cell, color: "var(--text-muted)" }}>
+                    <div>{fmtDateTime(r.paidAt)}</div>
+                    {r.paymentMethod && r.paymentMethod !== "stripe" ? (
+                      <div style={{ fontSize: "12px", textTransform: "capitalize" }}>{r.paymentMethod}</div>
+                    ) : null}
+                  </div>
+                  <div style={cell}>
+                    <div style={{ display: "flex", gap: "4px" }}>
+                      <div onClick={() => { setEditReg(r); setShowModal(true); }} title="Edit" style={{ padding: "5px 8px", background: "var(--btn-secondary-bg)", borderRadius: "6px", color: "var(--text-secondary)", cursor: "pointer", display: "flex", alignItems: "center" }}><Icons.Edit /></div>
+                      <div onClick={() => setConfDel(r)} title="Remove" style={{ padding: "5px 8px", background: "var(--btn-secondary-bg)", borderRadius: "6px", color: "#f87171", cursor: "pointer", display: "flex", alignItems: "center" }}><Icons.Trash /></div>
+                    </div>
+                  </div>
                 </div>
-                <div style={cell}>{r.car || <span style={{ color: "var(--text-muted)" }}>&mdash;</span>}</div>
-                <div style={cell}>
-                  <div><a href={"mailto:" + r.email} style={{ color: "var(--text-primary)", textDecoration: "none" }}>{r.email}</a></div>
-                  {r.phone ? <div style={{ color: "var(--text-muted)", fontSize: "13px" }}>{r.phone}</div> : null}
-                </div>
-                <div style={{ ...cell, color: "var(--text-muted)" }}>{fmtDateTime(r.paidAt)}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
+
+      <div style={{ marginTop: "12px", color: "var(--text-muted)", fontSize: "13px" }}>
+        {"Tickets: $" + TICKET_PRICE + " per person"}
+      </div>
+
+      {showModal && (
+        <DinnerModal
+          reg={editReg}
+          onSave={saveReg}
+          onClose={() => { setShowModal(false); setEditReg(null); }}
+        />
+      )}
+      {confDel && (
+        <Confirm
+          title="Remove Registration"
+          msg={"Remove " + confDel.memberName + " from the roster? The payment record is kept and marked void, so this can be traced later."}
+          onOk={() => delReg(confDel)}
+          onNo={() => setConfDel(null)}
+        />
+      )}
     </div>
   );
 }
