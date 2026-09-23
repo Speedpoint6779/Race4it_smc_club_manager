@@ -101,6 +101,8 @@ export async function ensureTables(sql) {
   await sql`ALTER TABLE email_log ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT false`;
   await sql`ALTER TABLE email_log ADD COLUMN IF NOT EXISTS body_html TEXT DEFAULT ''`;
   await sql`ALTER TABLE inbox_messages ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT false`;
+  await sql`ALTER TABLE members ADD COLUMN IF NOT EXISTS email_unsubscribed BOOLEAN DEFAULT false`;
+  await sql`ALTER TABLE members ADD COLUMN IF NOT EXISTS unsubscribed_at TIMESTAMP`;
 
   // Seed default templates if table is empty
   const tCount = await sql`SELECT COUNT(*) as count FROM email_templates`;
