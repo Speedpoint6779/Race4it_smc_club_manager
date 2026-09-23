@@ -92,6 +92,17 @@ function splitPart(text) {
   return { headers: text.slice(0, i), body: text.slice(i + (text[i + 1] === '\r' ? 4 : 2)) };
 }
 
+function htmlToText(html) {
+  return (html || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/\r?\n{3,}/g, '\n\n').trim();
+}
+
 function extractBody(raw) {
   const { headers, body } = splitPart(raw);
   const cte = (headers.match(/content-transfer-encoding:\s*(\S+)/i) || [])[1] || '7bit';
@@ -108,12 +119,7 @@ function extractBody(raw) {
     for (const part of parts) {
       if (!part.trim()) continue;
       const { headers: ph } = splitPart(part);
-      if (/content-type:\s*text\/html/i.test(ph)) {
-        const decoded = extractBody(part);
-        return decoded.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, '')
-          .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-          .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\r?\n{3,}/g, '\n\n').trim();
-      }
+      if (/content-type:\s*text\/html/i.test(ph)) return htmlToText(extractBody(part));
     }
     return '';
   }
@@ -142,28 +148,78 @@ function parseAndClean(text) {
   return stripMimeHeaders(text);
 }
 
+// Drop the quoted original ("On Wed, ... wrote:" and below) so the inbox shows just the reply.
+// The full text is still in the forwarded copy's quoted section if needed.
+function stripQuotedReply(text) {
+  if (!text) return text;
+  const markers = [
+    /^On .{0,300}wrote:\s*$/m,
+    /^-{2,}\s*Original Message\s*-{2,}/mi,
+    /^From:\s.+$\n^(Sent|Date):\s/m,
+    /^_{10,}\s*$/m,
+  ];
+  let cut = text.length;
+  for (const re of markers) {
+    const m = text.match(re);
+    if (m && m.index > 0 && m.index < cut) cut = m.index;
+  }
+  return text.slice(0, cut).trim() || text.trim();
+}
+
+// Resend inbound: the email.received webhook carries metadata only; fetch the body by id.
+// Fetching by id from Resend's API also means a forged POST can't inject a message.
+async function fetchResendReceived(emailId) {
+  const res = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}`, {
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+    cache: 'no-store',
+  });
+  if (!res.ok) throw new Error(`Resend receiving fetch failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
 export async function POST(req) {
   try {
     const payload = await req.json();
     let from, to, subject, bodyText, bodyHtml, messageId;
     const data = payload.data || payload;
-    const rawEmail = data.raw || data.message || '';
-    if (rawEmail && typeof rawEmail === 'string' && /content-type:/i.test(rawEmail)) {
-      from      = getHeader(rawEmail, 'From');
-      to        = getHeader(rawEmail, 'To');
-      subject   = getHeader(rawEmail, 'Subject');
-      messageId = getHeader(rawEmail, 'Message-ID').replace(/[<>]/g, '');
-      bodyText  = extractBody(rawEmail);
-      bodyHtml  = '';
-    } else {
-      from      = payload.FromFull?.Email ? `${payload.FromFull.Name || ''} <${payload.FromFull.Email}>`.trim() : (data.from || data.sender || payload.from || payload.sender || '');
-      to        = payload.To || (Array.isArray(data.to) ? data.to.join(', ') : (data.to || payload.to || ''));
-      subject   = payload.Subject || data.subject || payload.subject || '(no subject)';
-      bodyText  = payload.StrippedTextReply || payload.TextBody || data.text || data.plain || payload.text || payload.plain || '';
-      bodyHtml  = payload.HtmlBody || data.html || payload.html || '';
-      messageId = payload.MessageID || data.message_id || data.headers?.['message-id'] || payload.message_id || payload.headers?.['message-id'] || '';
+
+    if (payload.type && payload.type !== 'email.received' && data?.email_id) {
+      // Some other Resend event (delivered, opened, etc.) sent to this URL — ignore it.
+      return NextResponse.json({ ok: true, ignored: payload.type });
     }
-    const cleanBody = parseAndClean(bodyText);
+
+    if (payload.type === 'email.received' && data?.email_id) {
+      // ---- Resend inbound ----
+      if (!process.env.RESEND_API_KEY) throw new Error('RESEND_API_KEY not configured');
+      const email = await fetchResendReceived(data.email_id);
+      from      = email.headers?.from || email.from || data.from || '';
+      to        = Array.isArray(email.to) ? email.to.join(', ') : (email.to || '');
+      subject   = email.subject || data.subject || '(no subject)';
+      bodyText  = email.text || htmlToText(email.html);
+      bodyHtml  = email.html || '';
+      messageId = (email.message_id || data.message_id || data.email_id || '').replace(/[<>]/g, '');
+    } else {
+      // ---- Legacy formats (raw MIME / Postmark / generic) ----
+      const rawEmail = data.raw || data.message || '';
+      if (rawEmail && typeof rawEmail === 'string' && /content-type:/i.test(rawEmail)) {
+        from      = getHeader(rawEmail, 'From');
+        to        = getHeader(rawEmail, 'To');
+        subject   = getHeader(rawEmail, 'Subject');
+        messageId = getHeader(rawEmail, 'Message-ID').replace(/[<>]/g, '');
+        bodyText  = extractBody(rawEmail);
+        bodyHtml  = '';
+      } else {
+        from      = payload.FromFull?.Email ? `${payload.FromFull.Name || ''} <${payload.FromFull.Email}>`.trim() : (data.from || data.sender || payload.from || payload.sender || '');
+        to        = payload.To || (Array.isArray(data.to) ? data.to.join(', ') : (data.to || payload.to || ''));
+        subject   = payload.Subject || data.subject || payload.subject || '(no subject)';
+        bodyText  = payload.StrippedTextReply || payload.TextBody || data.text || data.plain || payload.text || payload.plain || '';
+        bodyHtml  = payload.HtmlBody || data.html || payload.html || '';
+        messageId = payload.MessageID || data.message_id || data.headers?.['message-id'] || payload.message_id || payload.headers?.['message-id'] || '';
+      }
+    }
+
+    const fullBody  = parseAndClean(bodyText);
+    const cleanBody = stripQuotedReply(fullBody);
     const sql = getDb();
     await ensureTables(sql);
     if (messageId) {
@@ -171,16 +227,20 @@ export async function POST(req) {
       if (existing.length > 0) return NextResponse.json({ ok: true, duplicate: true });
     }
     await sql`INSERT INTO inbox_messages (from_address, to_address, subject, body_text, body_html, message_id) VALUES (${from}, ${to}, ${subject}, ${cleanBody}, ${bodyHtml}, ${messageId})`;
+
     if (process.env.RESEND_API_KEY) {
       try {
         const resend = new Resend(process.env.RESEND_API_KEY);
-        const fwdBody = cleanBody || '(no message body)';
+        const fwdBody = fullBody || '(no message body)';
         const safeHtml = fwdBody.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>');
+        const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const replyAddr = (from.match(/<([^>]+)>/) || [])[1] || from;
         await resend.emails.send({
           from: FROM, to: [FORWARD_TO],
+          reply_to: replyAddr || undefined,
           subject: `Fwd: ${subject}`,
           text: `-------- Forwarded Message --------\nFrom: ${from}\nTo: ${to}\nSubject: ${subject}\n\n${fwdBody}`,
-          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#333;"><p style="color:#64748b;font-size:13px;border-bottom:1px solid #e5e7eb;padding-bottom:12px;margin-bottom:16px;"><strong>Forwarded from SMC Club Manager inbox</strong></p><table style="font-size:13px;color:#475569;margin-bottom:16px;border-collapse:collapse;"><tr><td style="padding:2px 12px 2px 0;color:#94a3b8;">From:</td><td>${from}</td></tr><tr><td style="padding:2px 12px 2px 0;color:#94a3b8;">To:</td><td>${to}</td></tr><tr><td style="padding:2px 12px 2px 0;color:#94a3b8;">Subject:</td><td>${subject}</td></tr></table><div style="line-height:1.6;font-size:15px;border-top:1px solid #e5e7eb;padding-top:16px;">${safeHtml}</div></div>`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#333;"><p style="color:#64748b;font-size:13px;border-bottom:1px solid #e5e7eb;padding-bottom:12px;margin-bottom:16px;"><strong>Forwarded from SMC Club Manager inbox</strong></p><table style="font-size:13px;color:#475569;margin-bottom:16px;border-collapse:collapse;"><tr><td style="padding:2px 12px 2px 0;color:#94a3b8;">From:</td><td>${esc(from)}</td></tr><tr><td style="padding:2px 12px 2px 0;color:#94a3b8;">To:</td><td>${esc(to)}</td></tr><tr><td style="padding:2px 12px 2px 0;color:#94a3b8;">Subject:</td><td>${esc(subject)}</td></tr></table><div style="line-height:1.6;font-size:15px;border-top:1px solid #e5e7eb;padding-top:16px;">${safeHtml}</div></div>`,
         });
       } catch (fwdErr) { console.error('Forward error:', fwdErr); }
     }
