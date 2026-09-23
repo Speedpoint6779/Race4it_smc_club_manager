@@ -11,6 +11,7 @@ const REPLY_TO = process.env.EMAIL_REPLY_TO || 'club@seniormensclub.org';
 
 const BODY_FONT_SIZE   = '18px';
 const BODY_LINE_HEIGHT = '1.6';
+const PARA_GAP         = '18px';
 
 // GET /api/email?folder=sent|trash — fetch sent email log
 export async function GET(req) {
@@ -67,22 +68,21 @@ export async function PATCH(req) {
 /**
  * Clean Quill HTML for email sending.
  *
- * Quill uses <p><br></p> as a blank-line spacer between paragraphs.
- * Each one becomes a <p> containing only &nbsp; — the universally safe blank-line
- * technique (Outlook ignores CSS height/margin on divs but respects &nbsp; in <p>).
- * Consecutive spacers are collapsed to one.
+ * Paragraph spacing is normalized so it looks the same whether the text was typed
+ * (Quill inserts <p><br></p> for each blank line) or pasted (no blank lines at all):
+ *   1. Blank spacer paragraphs are removed.
+ *   2. Every <p>, <ul>, <ol> gets an inline bottom margin. Inline styles are used
+ *      because Outlook and some webmail clients ignore <style> blocks.
+ * Line breaks inside a paragraph (Shift+Enter) are preserved.
  */
 function cleanQuillHtml(html) {
   if (!html) return html;
 
-  const SPACER = `<p style="margin:0;padding:0;line-height:${BODY_LINE_HEIGHT};font-size:${BODY_FONT_SIZE};">&nbsp;</p>`;
+  let cleaned = html.replace(/<p[^>]*>(\s|&nbsp;|<br\s*\/?>)*<\/p>/gi, '');
 
-  let cleaned = html
-    .replace(/<p>(\s|&nbsp;)*<br\s*\/?>\s*<\/p>/gi, SPACER)
-    .replace(/<p>(\s|&nbsp;)*<\/p>/gi, SPACER);
-
-  const escapedSpacer = SPACER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  cleaned = cleaned.replace(new RegExp(`(${escapedSpacer}\\s*){2,}`, 'g'), SPACER);
+  cleaned = cleaned
+    .replace(/<p(?=[\s>])/gi, `<p style="margin:0 0 ${PARA_GAP} 0;padding:0;"`)
+    .replace(/<(ul|ol)(?=[\s>])/gi, `<$1 style="margin:0 0 ${PARA_GAP} 0;padding:0 0 0 28px;"`);
 
   return cleaned.trim();
 }
@@ -113,8 +113,8 @@ function buildEmailHtml(innerHtml, unsubUrl) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   body { margin:0; padding:0; background:#ffffff; }
-  p { margin:0; padding:0; }
-  ul, ol { margin:0; padding:0 0 0 28px; }
+  p { margin:0 0 ${PARA_GAP} 0; padding:0; }
+  ul, ol { margin:0 0 ${PARA_GAP} 0; padding:0 0 0 28px; }
   li { margin:0 0 6px 0; }
   strong { font-weight:700; }
   a { color:#1a56db; text-decoration:underline; }
