@@ -13,16 +13,52 @@ const BODY_FONT_SIZE   = '18px';
 const BODY_LINE_HEIGHT = '1.6';
 const PARA_GAP         = '18px';
 
-// GET /api/email?folder=sent|trash — fetch sent email log
+// GET /api/email?folder=sent|trash — fetch sent email log (with open-tracking counts)
+// GET /api/email?log_id=123         — per-recipient tracking for one sent email
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
-    const folder = searchParams.get('folder') || 'sent';
     const sql = getDb();
     await ensureTables(sql);
-    const rows = folder === 'trash'
-      ? await sql`SELECT id, subject, recipient_count, recipient_emails, body_html, sent_at, status, error, deleted FROM email_log WHERE deleted = true ORDER BY sent_at DESC LIMIT 50`
-      : await sql`SELECT id, subject, recipient_count, recipient_emails, body_html, sent_at, status, error, deleted FROM email_log WHERE deleted = false ORDER BY sent_at DESC LIMIT 50`;
+
+    const logId = parseInt(searchParams.get('log_id'));
+    if (logId) {
+      const recipients = await sql`
+        SELECT r.id, r.member_id, r.email,
+               m.first_name, m.last_name,
+               r.delivered_at, r.first_opened_at, r.last_opened_at, r.open_count,
+               r.first_clicked_at, r.click_count, r.bounced_at, r.bounce_reason, r.complained_at
+        FROM email_recipients r
+        LEFT JOIN members m ON m.id = r.member_id
+        WHERE r.email_log_id = ${logId}
+        ORDER BY m.last_name NULLS LAST, m.first_name NULLS LAST, r.email
+      `;
+      return NextResponse.json(recipients);
+    }
+
+    const isTrash = (searchParams.get('folder') || 'sent') === 'trash';
+    const rows = await sql`
+      SELECT l.id, l.subject, l.recipient_count, l.recipient_emails, l.body_html, l.sent_at, l.status, l.error, l.deleted,
+             COALESCE(s.tracked, 0)   AS tracked_count,
+             COALESCE(s.delivered, 0) AS delivered_count,
+             COALESCE(s.opened, 0)    AS opened_count,
+             COALESCE(s.clicked, 0)   AS clicked_count,
+             COALESCE(s.bounced, 0)   AS bounced_count
+      FROM email_log l
+      LEFT JOIN (
+        SELECT email_log_id,
+               COUNT(*)::int                AS tracked,
+               COUNT(delivered_at)::int     AS delivered,
+               COUNT(first_opened_at)::int  AS opened,
+               COUNT(first_clicked_at)::int AS clicked,
+               COUNT(bounced_at)::int       AS bounced
+        FROM email_recipients
+        GROUP BY email_log_id
+      ) s ON s.email_log_id = l.id
+      WHERE l.deleted = ${isTrash}
+      ORDER BY l.sent_at DESC
+      LIMIT 50
+    `;
     return NextResponse.json(rows);
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -166,42 +202,73 @@ export async function POST(req) {
     const cleanedBody = cleanQuillHtml(htmlBody);
     const baseInnerHtml = cleanedBody || escapeHtml(body).replace(/\n/g, '<br/>');
 
-    const batch = members.map(m => {
+    const items = members.map(m => {
       const unsubUrl = unsubscribeUrl(m.id);
       const inner = personalize(baseInnerHtml, m, { html: true });
       const text  = `${personalize(body, m, { html: false })}\n\n--\nSenior Men's Club of Wilmington\nUnsubscribe: ${unsubUrl}`;
       return {
-        from: FROM,
-        reply_to: REPLY_TO,
-        to: [`${m.first_name} ${m.last_name} <${m.email}>`],
-        subject: personalize(subject, m, { html: false }),
-        text,
-        html: buildEmailHtml(inner, unsubUrl),
-        headers: {
-          'List-Unsubscribe': `<${unsubUrl}>`,
-          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        member: m,
+        payload: {
+          from: FROM,
+          reply_to: REPLY_TO,
+          to: [`${m.first_name} ${m.last_name} <${m.email}>`],
+          subject: personalize(subject, m, { html: false }),
+          text,
+          html: buildEmailHtml(inner, unsubUrl),
+          headers: {
+            'List-Unsubscribe': `<${unsubUrl}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          },
         },
       };
     });
 
+    const storedBody = cleanedBody || '';
+
+    // Write the log row first so recipient rows (and webhook events) have something to attach to.
+    const logRows = await sql`
+      INSERT INTO email_log (subject, recipient_count, recipient_emails, body_html, status)
+      VALUES (${subject}, ${members.length}, ${members.map(m => m.email).join(', ')}, ${storedBody}, 'sending')
+      RETURNING id
+    `;
+    const logId = logRows[0].id;
+
     const CHUNK = 100;
     let totalSent = 0;
     let firstError = null;
-    for (let i = 0; i < batch.length; i += CHUNK) {
-      const chunk = batch.slice(i, i + CHUNK);
-      const { error } = await resend.batch.send(chunk);
+    let trackingError = null;
+    for (let i = 0; i < items.length; i += CHUNK) {
+      const chunk = items.slice(i, i + CHUNK);
+      const { data, error } = await resend.batch.send(chunk.map(x => x.payload));
       if (error) { firstError = error; break; }
       totalSent += chunk.length;
-    }
 
-    const storedBody = cleanedBody || '';
+      // Resend returns one id per email, in the same order as the batch.
+      const ids = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+      try {
+        await sql`
+          INSERT INTO email_recipients (email_log_id, member_id, email, resend_id)
+          SELECT ${logId}, t.member_id, t.email, NULLIF(t.resend_id, '')
+          FROM unnest(
+            ${chunk.map(x => x.member.id)}::int[],
+            ${chunk.map(x => x.member.email)}::text[],
+            ${chunk.map((x, j) => ids[j]?.id || '')}::text[]
+          ) AS t(member_id, email, resend_id)
+          ON CONFLICT (resend_id) DO NOTHING
+        `;
+      } catch (e) {
+        // Tracking must never block sending; the email already went out.
+        trackingError = e.message;
+        console.error('Recipient tracking insert failed:', e);
+      }
+    }
 
     if (firstError) {
-      await sql`INSERT INTO email_log (subject, recipient_count, recipient_emails, body_html, status, error) VALUES (${subject}, ${members.length}, ${members.map(m => m.email).join(', ')}, ${storedBody}, 'failed', ${`${firstError.message} (sent ${totalSent} of ${members.length} before failing)`})`;
+      await sql`UPDATE email_log SET status = 'failed', error = ${`${firstError.message} (sent ${totalSent} of ${members.length} before failing)`} WHERE id = ${logId}`;
       return NextResponse.json({ error: firstError.message, sent: totalSent }, { status: 500 });
     }
-    await sql`INSERT INTO email_log (subject, recipient_count, recipient_emails, body_html, status) VALUES (${subject}, ${members.length}, ${members.map(m => m.email).join(', ')}, ${storedBody}, 'sent')`;
-    return NextResponse.json({ success: true, sent: totalSent, skippedUnsubscribed });
+    await sql`UPDATE email_log SET status = 'sent' WHERE id = ${logId}`;
+    return NextResponse.json({ success: true, sent: totalSent, skippedUnsubscribed, logId, trackingError });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

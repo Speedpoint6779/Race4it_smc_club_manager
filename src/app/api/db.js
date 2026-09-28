@@ -96,6 +96,39 @@ export async function ensureTables(sql) {
       updated_at TIMESTAMP DEFAULT NOW()
     )
   `;
+  // One row per recipient of each email_log send; resend_id links Resend webhook events back here.
+  await sql`
+    CREATE TABLE IF NOT EXISTS email_recipients (
+      id SERIAL PRIMARY KEY,
+      email_log_id INTEGER NOT NULL REFERENCES email_log(id) ON DELETE CASCADE,
+      member_id INTEGER,
+      email TEXT NOT NULL,
+      resend_id TEXT UNIQUE,
+      delivered_at TIMESTAMPTZ,
+      first_opened_at TIMESTAMPTZ,
+      last_opened_at TIMESTAMPTZ,
+      open_count INTEGER NOT NULL DEFAULT 0,
+      first_clicked_at TIMESTAMPTZ,
+      click_count INTEGER NOT NULL DEFAULT 0,
+      bounced_at TIMESTAMPTZ,
+      bounce_reason TEXT DEFAULT '',
+      complained_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS email_recipients_log_idx ON email_recipients (email_log_id)`;
+  // Raw Resend webhook events (also used to dedupe retries by svix_id).
+  await sql`
+    CREATE TABLE IF NOT EXISTS email_events (
+      id SERIAL PRIMARY KEY,
+      svix_id TEXT UNIQUE,
+      resend_id TEXT,
+      type TEXT NOT NULL,
+      occurred_at TIMESTAMPTZ,
+      payload JSONB,
+      received_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
 
   // Safe migrations
   await sql`ALTER TABLE email_log ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT false`;

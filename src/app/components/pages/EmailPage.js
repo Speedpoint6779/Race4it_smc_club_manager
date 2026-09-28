@@ -1,10 +1,17 @@
 import { Icons } from "../Icons";
 import { BTN } from "../ui";
 import { EmailModal } from "../EmailModal";
+import { SentTracking, TrackingSummary } from "../SentTracking";
 import { useState, useEffect, useCallback, useRef } from "react";
 
 const MIME_HEADER_LINE = /^(content-type|content-transfer-encoding|mime-version|charset|boundary|content-disposition)\s*[:=]/i;
 const MIME_JUNK_LINE = /^(charset=|boundary=|content-id:|x-ms-|x-mailer:|return-path:|received:|message-id:|date:|dkim-|arc-|authentication-results:)/i;
+
+const sentStatusLabel = s => s === "failed" ? "Failed" : s === "sending" ? "Sending" : "Sent";
+const sentStatusBadge = s => ({
+  background: s === "failed" ? "var(--badge-overdue-bg)" : "var(--badge-paid-bg)",
+  color: s === "failed" ? "var(--badge-overdue-text)" : "var(--badge-paid-text)",
+});
 
 function stripMimeLeadingHeaders(text) {
   const lines = text.split('\n');
@@ -398,8 +405,8 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: "1px solid var(--border)", background: "var(--bg-hover)" }}>
             <div style={{ color: "var(--text-heading)", fontSize: "16px", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{openSent.subject}</div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "12px", flexShrink: 0 }}>
-              <div style={{ padding: "3px 10px", borderRadius: "99px", fontSize: "12px", fontWeight: "600", background: openSent.status === "sent" ? "var(--badge-paid-bg)" : "var(--badge-overdue-bg)", color: openSent.status === "sent" ? "var(--badge-paid-text)" : "var(--badge-overdue-text)", border: "1px solid transparent" }}>
-                {openSent.status === "sent" ? "Sent" : "Failed"}
+              <div style={{ padding: "3px 10px", borderRadius: "99px", fontSize: "12px", fontWeight: "600", ...sentStatusBadge(openSent.status), border: "1px solid transparent" }}>
+                {sentStatusLabel(openSent.status)}
               </div>
               <div onClick={() => setOpenSent(null)} style={{ color: "var(--text-muted)", cursor: "pointer", fontSize: "18px", lineHeight: 1, padding: "4px 6px" }}>✕</div>
             </div>
@@ -414,6 +421,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
             )}
             <div style={{ color: "var(--text-muted)", fontSize: "13px" }}>{fmtDate(openSent.sent_at)}</div>
           </div>
+          <SentTracking entry={openSent} />
           <div style={{ padding: "20px", minHeight: "60px" }}>
             <SentBodyPreview html={openSent.body_html} />
           </div>
@@ -517,9 +525,10 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "6px", gap: "12px" }}>
                     <div style={{ color: "var(--text-heading)", fontSize: "15px", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.subject}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                      <TrackingSummary entry={entry} />
                       <div style={{ color: "var(--text-secondary)", fontSize: "14px", whiteSpace: "nowrap" }}>{entry.recipient_count} recipient{entry.recipient_count !== 1 ? "s" : ""}</div>
-                      <div style={{ padding: "3px 10px", borderRadius: "99px", fontSize: "12px", fontWeight: "600", background: entry.status === "sent" ? "var(--badge-paid-bg)" : "var(--badge-overdue-bg)", color: entry.status === "sent" ? "var(--badge-paid-text)" : "var(--badge-overdue-text)" }}>
-                        {entry.status === "sent" ? "Sent" : "Failed"}
+                      <div style={{ padding: "3px 10px", borderRadius: "99px", fontSize: "12px", fontWeight: "600", ...sentStatusBadge(entry.status) }}>
+                        {sentStatusLabel(entry.status)}
                       </div>
                     </div>
                   </div>
