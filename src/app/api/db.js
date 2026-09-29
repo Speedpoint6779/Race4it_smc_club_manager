@@ -129,8 +129,21 @@ export async function ensureTables(sql) {
       received_at TIMESTAMPTZ DEFAULT NOW()
     )
   `;
+  // Replies sent from the app to inbox messages (inbox_messages.replied_at is the quick flag for the list).
+  await sql`
+    CREATE TABLE IF NOT EXISTS inbox_replies (
+      id SERIAL PRIMARY KEY,
+      inbox_message_id INTEGER NOT NULL REFERENCES inbox_messages(id) ON DELETE CASCADE,
+      to_addresses TEXT NOT NULL DEFAULT '',
+      subject TEXT DEFAULT '',
+      body_html TEXT DEFAULT '',
+      resend_id TEXT,
+      sent_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
 
   // Safe migrations
+  await sql`ALTER TABLE inbox_messages ADD COLUMN IF NOT EXISTS replied_at TIMESTAMPTZ`;
   await sql`ALTER TABLE email_log ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT false`;
   await sql`ALTER TABLE email_log ADD COLUMN IF NOT EXISTS body_html TEXT DEFAULT ''`;
   await sql`ALTER TABLE inbox_messages ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT false`;

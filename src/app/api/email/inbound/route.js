@@ -16,8 +16,8 @@ export async function GET(req) {
     const sql = getDb();
     await ensureTables(sql);
     const rows = folder === 'trash'
-      ? await sql`SELECT id, from_address, to_address, subject, body_text, is_read, received_at, deleted FROM inbox_messages WHERE deleted = true ORDER BY received_at DESC LIMIT 100`
-      : await sql`SELECT id, from_address, to_address, subject, body_text, is_read, received_at, deleted FROM inbox_messages WHERE deleted = false ORDER BY received_at DESC LIMIT 100`;
+      ? await sql`SELECT id, from_address, to_address, subject, body_text, is_read, received_at, replied_at, deleted FROM inbox_messages WHERE deleted = true ORDER BY received_at DESC LIMIT 100`
+      : await sql`SELECT id, from_address, to_address, subject, body_text, is_read, received_at, replied_at, deleted FROM inbox_messages WHERE deleted = false ORDER BY received_at DESC LIMIT 100`;
     return NextResponse.json(rows);
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -45,17 +45,27 @@ export async function DELETE(req) {
   }
 }
 
-// PATCH /api/email/inbound?id=123 — mark read OR restore from trash
+// PATCH /api/email/inbound?id=123                — mark read
+// PATCH /api/email/inbound?id=123&restore=true   — restore from trash
+// PATCH /api/email/inbound?id=123&replied=true   — mark as replied (e.g. answered from another mailbox)
+// PATCH /api/email/inbound?id=123&replied=false  — mark as needing a reply
 export async function PATCH(req) {
   try {
     const { searchParams } = new URL(req.url);
     const id = parseInt(searchParams.get('id'));
     const restore = searchParams.get('restore') === 'true';
+    const replied = searchParams.get('replied');
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
     const sql = getDb();
     await ensureTables(sql);
     if (restore) {
       await sql`UPDATE inbox_messages SET deleted = false WHERE id = ${id}`;
+    } else if (replied === 'true') {
+      const rows = await sql`UPDATE inbox_messages SET replied_at = COALESCE(replied_at, NOW()), is_read = true WHERE id = ${id} RETURNING replied_at`;
+      return NextResponse.json({ ok: true, replied_at: rows[0]?.replied_at || null });
+    } else if (replied === 'false') {
+      await sql`UPDATE inbox_messages SET replied_at = NULL WHERE id = ${id}`;
+      return NextResponse.json({ ok: true, replied_at: null });
     } else {
       await sql`UPDATE inbox_messages SET is_read = true WHERE id = ${id}`;
     }

@@ -2,7 +2,8 @@ import { Icons } from "../Icons";
 import { BTN } from "../ui";
 import { EmailModal } from "../EmailModal";
 import { SentTracking, TrackingSummary } from "../SentTracking";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { InboxMessageModal, displayName } from "../InboxMessageModal";
+import { useState, useEffect, useCallback } from "react";
 
 const MIME_HEADER_LINE = /^(content-type|content-transfer-encoding|mime-version|charset|boundary|content-disposition)\s*[:=]/i;
 const MIME_JUNK_LINE = /^(charset=|boundary=|content-id:|x-ms-|x-mailer:|return-path:|received:|message-id:|date:|dkim-|arc-|authentication-results:)/i;
@@ -62,86 +63,6 @@ function cleanBodyText(raw) {
   return text.trim();
 }
 
-let quillLoaded = false;
-function loadQuill() {
-  if (quillLoaded || typeof window === "undefined") return Promise.resolve();
-  if (window.Quill) { quillLoaded = true; return Promise.resolve(); }
-  return new Promise(resolve => {
-    if (!document.querySelector('link[href*="quill"]')) {
-      const link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = "https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css";
-      document.head.appendChild(link);
-    }
-    // Inject theme-aware Quill styles
-    const existingStyle = document.getElementById('quill-theme-styles');
-    if (!existingStyle) {
-      const style = document.createElement("style");
-      style.id = 'quill-theme-styles';
-      style.textContent = `
-        .ql-toolbar { background:var(--bg-input) !important; border:1px solid var(--border) !important; border-bottom:none !important; border-radius:8px 8px 0 0 !important; }
-        .ql-container { background:var(--bg-input) !important; border:1px solid var(--border) !important; border-radius:0 0 8px 8px !important; min-height:120px !important; }
-        .ql-editor { color:var(--text-primary) !important; font-size:15px !important; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif !important; min-height:120px !important; }
-        .ql-editor.ql-blank::before { color:var(--text-faint) !important; font-style:normal !important; }
-        .ql-stroke { stroke:var(--text-secondary) !important; }
-        .ql-fill { fill:var(--text-secondary) !important; }
-        .ql-picker { color:var(--text-secondary) !important; }
-        .ql-picker-options { background:var(--bg-card) !important; border:1px solid var(--border) !important; }
-        .ql-picker-item { color:var(--text-secondary) !important; }
-        .ql-picker-item:hover { color:var(--text-heading) !important; background:var(--bg-hover) !important; }
-        .ql-active .ql-stroke, button:hover .ql-stroke { stroke:var(--accent-text) !important; }
-        .ql-active .ql-fill, button:hover .ql-fill { fill:var(--accent-text) !important; }
-        .ql-active { color:var(--accent-text) !important; }
-        .ql-snow .ql-picker.ql-expanded .ql-picker-label { color:var(--accent-text) !important; border-color:var(--border) !important; }
-        .ql-snow .ql-tooltip { background:var(--bg-card) !important; border:1px solid var(--border) !important; color:var(--text-primary) !important; }
-        .ql-snow .ql-tooltip input { background:var(--bg-input) !important; border:1px solid var(--border) !important; color:var(--text-primary) !important; }
-      `;
-      document.head.appendChild(style);
-    }
-    if (!document.querySelector('script[src*="quill"]')) {
-      const script = document.createElement("script");
-      script.src = "https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js";
-      script.onload = () => { quillLoaded = true; resolve(); };
-      document.head.appendChild(script);
-    } else {
-      const check = setInterval(() => { if (window.Quill) { clearInterval(check); quillLoaded = true; resolve(); } }, 50);
-    }
-  });
-}
-
-function ReplyEditor({ onChange }) {
-  const containerRef = useRef(null);
-  const quillRef = useRef(null);
-  useEffect(() => {
-    let cancelled = false;
-    loadQuill().then(() => {
-      if (cancelled || !containerRef.current || quillRef.current) return;
-      const q = new window.Quill(containerRef.current, {
-        theme: "snow",
-        placeholder: "Write your reply...",
-        modules: {
-          toolbar: [
-            [{ font: [] }, { size: ["small", false, "large", "huge"] }],
-            ["bold", "italic", "underline", "strike"],
-            [{ color: [] }, { background: [] }],
-            [{ list: "ordered" }, { list: "bullet" }],
-            [{ align: [] }],
-            ["link"],
-            ["clean"],
-          ],
-        },
-      });
-      quillRef.current = q;
-      q.on("text-change", () => {
-        const html = q.root.innerHTML;
-        onChange(html === "<p><br></p>" ? "" : html);
-      });
-    });
-    return () => { cancelled = true; if (quillRef.current) { quillRef.current = null; } };
-  }, []); // eslint-disable-line
-  return <div ref={containerRef} />;
-}
-
 function SentBodyPreview({ html }) {
   if (!html) return <div style={{ color: "var(--text-faint)", fontSize: "14px", fontStyle: "italic" }}>No message body stored.</div>;
   const plainText = html
@@ -174,9 +95,7 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
   const [trashLoading, setTrashLoading] = useState(false);
   const [openMsg, setOpenMsg] = useState(null);
   const [openSent, setOpenSent] = useState(null);
-  const [replyMode, setReplyMode] = useState(null);
-  const [replyHtml, setReplyHtml] = useState("");
-  const [replySending, setReplySending] = useState(false);
+  const [inboxFilter, setInboxFilter] = useState("all");
   const [lists, setLists] = useState([]);
   const [showListManager, setShowListManager] = useState(false);
 
@@ -224,10 +143,10 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
   };
 
   const softDeleteInbox = async (e, id) => {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     await fetch(`/api/email/inbound?id=${id}`, { method: "DELETE" });
     setInbox(prev => prev.filter(x => x.id !== id));
-    if (openMsg?.id === id) closeMsg();
+    if (openMsg?.id === id) setOpenMsg(null);
   };
 
   const restoreItem = async (item) => {
@@ -258,6 +177,11 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
 
   const noEmail = members.filter(m => m.status === "active" && !m.email).length;
   const unread = inbox.filter(m => !m.is_read).length;
+  const needsReplyCount = inbox.filter(m => !m.replied_at).length;
+  const repliedCount = inbox.length - needsReplyCount;
+  const shownInbox = inboxFilter === "needs" ? inbox.filter(m => !m.replied_at)
+    : inboxFilter === "replied" ? inbox.filter(m => m.replied_at)
+    : inbox;
 
   const tabStyle = active => ({
     padding: "8px 20px", borderRadius: "8px", cursor: "pointer", fontSize: "15px",
@@ -269,66 +193,18 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
 
   const openInboxMsg = async (msg) => {
     setOpenSent(null);
-    setOpenMsg(msg); setReplyMode(null); setReplyHtml("");
+    setOpenMsg(msg);
     if (!msg.is_read) {
       await fetch(`/api/email/inbound/${msg.id}`, { method: "PATCH" });
       setInbox(prev => prev.map(m => m.id === msg.id ? { ...m, is_read: true } : m));
     }
   };
 
-  const closeMsg = () => { setOpenMsg(null); setReplyMode(null); setReplyHtml(""); };
-
-  const extractEmail = (str) => {
-    if (!str) return "";
-    const m = str.match(/<(.+?)>/);
-    return m ? m[1].trim() : str.trim();
-  };
-
-  const getReplyAllAddresses = (msg) => {
-    const clubEmail = "club@seniormensclub.org";
-    const fromEmail = extractEmail(msg.from_address);
-    const toEmails = (msg.to_address || "").split(",").map(e => extractEmail(e.trim())).filter(e => e && e !== clubEmail);
-    const all = [fromEmail, ...toEmails].filter(e => e && e !== clubEmail);
-    return [...new Set(all)];
-  };
-
-  const sendReply = async () => {
-    if (!replyHtml || !openMsg) return;
-    setReplySending(true);
-    const plainText = replyHtml
-      .replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]+>/g, "")
-      .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-      .replace(/\n{3,}/g, "\n\n").trim();
-    const replySubject = openMsg.subject.startsWith("Re:") ? openMsg.subject : `Re: ${openMsg.subject}`;
-    try {
-      if (replyMode === "replyAll") {
-        const allAddresses = getReplyAllAddresses(openMsg);
-        const memberRecipients = [];
-        const directRecipients = [];
-        allAddresses.forEach(email => {
-          const m = members.find(m => m.email?.toLowerCase() === email.toLowerCase());
-          if (m) memberRecipients.push(m.id); else directRecipients.push(email);
-        });
-        if (memberRecipients.length) {
-          await fetch("/api/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memberIds: memberRecipients, subject: replySubject, body: plainText, htmlBody: replyHtml }) });
-        }
-        for (const email of directRecipients) {
-          await fetch("/api/email/reply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: email, subject: replySubject, body: plainText, htmlBody: replyHtml }) });
-        }
-      } else {
-        const replyToEmail = extractEmail(openMsg.from_address);
-        const matchedMember = members.find(m => m.email?.toLowerCase() === replyToEmail.toLowerCase());
-        if (matchedMember) {
-          await fetch("/api/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memberIds: [matchedMember.id], subject: replySubject, body: plainText, htmlBody: replyHtml }) });
-        } else {
-          await fetch("/api/email/reply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: replyToEmail, subject: replySubject, body: plainText, htmlBody: replyHtml }) });
-        }
-      }
-      if (flash) flash(replyMode === "replyAll" ? "Reply All sent!" : "Reply sent!");
-      setReplyMode(null); setReplyHtml(""); loadLog();
-    } catch (e) {
-      if (flash) flash(`Failed to send: ${e.message}`);
-    } finally { setReplySending(false); }
+  // Apply a change from the message dialog (replied / not replied) to the list and the open message.
+  const updateInboxMsg = (patch, opts = {}) => {
+    setInbox(prev => prev.map(x => x.id === patch.id ? { ...x, ...patch } : x));
+    setOpenMsg(prev => prev && prev.id === patch.id ? { ...prev, ...patch } : prev);
+    if (opts.sent) loadLog();
   };
 
   const previewText = (body) => cleanBodyText(body).replace(/\s+/g, ' ').trim();
@@ -428,50 +304,6 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
         </div>
       )}
 
-      {/* Inbox message detail */}
-      {openMsg && (
-        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "12px", marginBottom: "16px", overflow: "hidden" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: "1px solid var(--border)", background: "var(--bg-hover)" }}>
-            <div style={{ color: "var(--text-heading)", fontSize: "16px", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{openMsg.subject}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "12px", flexShrink: 0 }}>
-              <DelButton onClick={(e) => softDeleteInbox(e, openMsg.id)} title="Move to Trash" />
-              <div onClick={closeMsg} style={{ color: "var(--text-muted)", cursor: "pointer", fontSize: "18px", lineHeight: 1, padding: "4px 6px" }}>✕</div>
-            </div>
-          </div>
-          <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--border-light)", background: "var(--bg-hover)" }}>
-            <div style={{ color: "var(--text-secondary)", fontSize: "14px", marginBottom: "2px" }}><span style={{ color: "var(--text-muted)" }}>From: </span>{openMsg.from_address}</div>
-            {openMsg.to_address && <div style={{ color: "var(--text-secondary)", fontSize: "14px", marginBottom: "2px" }}><span style={{ color: "var(--text-muted)" }}>To: </span>{openMsg.to_address}</div>}
-            <div style={{ color: "var(--text-muted)", fontSize: "13px" }}>{fmtDate(openMsg.received_at)}</div>
-          </div>
-          <div style={{ padding: "20px", minHeight: "80px" }}>
-            {openMsg.body_text
-              ? <div style={{ color: "var(--text-primary)", fontSize: "15px", lineHeight: "1.7", whiteSpace: "pre-wrap", fontFamily: "inherit" }}>{cleanBodyText(openMsg.body_text)}</div>
-              : <div style={{ color: "var(--text-faint)", fontSize: "14px", fontStyle: "italic" }}>No message body</div>}
-          </div>
-          {replyMode ? (
-            <div style={{ padding: "16px 20px", borderTop: "1px solid var(--border)", background: "var(--reply-bg)" }}>
-              <div style={{ marginBottom: "8px", fontSize: "14px", color: "var(--text-muted)" }}>
-                {replyMode === "replyAll" ? `Replying to all: ${getReplyAllAddresses(openMsg).join(", ")}` : `Replying to: ${extractEmail(openMsg.from_address)}`}
-              </div>
-              <ReplyEditor onChange={setReplyHtml} />
-              <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
-                <div onClick={sendReply} style={{ ...BTN("var(--accent-gradient)"), display: "flex", alignItems: "center", gap: "6px", opacity: (replyHtml && !replySending) ? 1 : 0.5, pointerEvents: (replyHtml && !replySending) ? "auto" : "none" }}>
-                  <Icons.Send />{replySending ? "Sending…" : replyMode === "replyAll" ? "Send Reply All" : "Send Reply"}
-                </div>
-                <div onClick={() => { setReplyMode(null); setReplyHtml(""); }} style={{ ...BTN("var(--btn-secondary-bg)"), color: "var(--text-secondary)" }}>Cancel</div>
-              </div>
-            </div>
-          ) : (
-            <div style={{ padding: "12px 20px", borderTop: "1px solid var(--border)", display: "flex", gap: "8px" }}>
-              <div onClick={() => setReplyMode("reply")} style={{ ...BTN("var(--restore-bg)"), display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--accent-text)", border: "1px solid var(--accent-border)" }}>↩ Reply</div>
-              {getReplyAllAddresses(openMsg).length > 1 && (
-                <div onClick={() => setReplyMode("replyAll")} style={{ ...BTN("var(--bg-card)"), display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>↩↩ Reply All</div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Tabs */}
       <div style={{ background: "var(--bg-card)", borderRadius: "12px", border: "1px solid var(--border)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
@@ -489,23 +321,46 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
           </div>
         </div>
 
+        {/* Inbox filter: needs reply / replied */}
+        {tab === "inbox" && !inboxLoading && inbox.length > 0 && (
+          <div style={{ display: "flex", gap: "8px", padding: "12px 16px", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
+            {[
+              { id: "all", label: `All (${inbox.length})` },
+              { id: "needs", label: `Needs reply (${needsReplyCount})` },
+              { id: "replied", label: `Replied (${repliedCount})` },
+            ].map(f => (
+              <div key={f.id} onClick={() => setInboxFilter(f.id)} style={{
+                padding: "6px 14px", borderRadius: "8px", cursor: "pointer", fontSize: "14px",
+                fontWeight: inboxFilter === f.id ? "600" : "400",
+                background: inboxFilter === f.id ? "var(--nav-active-bg)" : "transparent",
+                color: inboxFilter === f.id ? "var(--accent-text)" : "var(--text-secondary)",
+                border: inboxFilter === f.id ? "1px solid var(--accent-border)" : "1px solid var(--border)",
+              }}>{f.label}</div>
+            ))}
+          </div>
+        )}
+
         {/* Inbox Tab */}
         {tab === "inbox" && (
           inboxLoading ? <div style={{ padding: "32px", textAlign: "center", color: "var(--text-muted)", fontSize: "15px" }}>Loading...</div>
           : inbox.length === 0 ? <div style={{ padding: "32px", textAlign: "center", color: "var(--text-muted)", fontSize: "15px" }}>No messages received yet</div>
-          : <div>{inbox.map((msg, i) => {
+          : shownInbox.length === 0 ? <div style={{ padding: "32px", textAlign: "center", color: "var(--text-muted)", fontSize: "15px" }}>{inboxFilter === "needs" ? "Nothing waiting on a reply." : "No replied messages yet."}</div>
+          : <div>{shownInbox.map((msg, i) => {
               const preview = previewText(msg.body_text);
               return (
-                <div key={msg.id} onClick={() => openInboxMsg(msg)} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "14px 20px", borderBottom: i < inbox.length - 1 ? "1px solid var(--border)" : "none", background: openMsg?.id === msg.id ? "var(--bg-selected)" : (!msg.is_read ? "var(--inbox-unread-bg)" : "transparent"), cursor: "pointer", transition: "background 0.15s" }}>
+                <div key={msg.id} onClick={() => openInboxMsg(msg)} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "14px 20px", borderBottom: i < shownInbox.length - 1 ? "1px solid var(--border)" : "none", background: openMsg?.id === msg.id ? "var(--bg-selected)" : (!msg.is_read ? "var(--inbox-unread-bg)" : "transparent"), cursor: "pointer", transition: "background 0.15s" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "4px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
                         {!msg.is_read && <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "var(--inbox-dot)", flexShrink: 0 }} />}
                         <div style={{ color: !msg.is_read ? "var(--text-heading)" : "var(--text-secondary)", fontSize: "15px", fontWeight: !msg.is_read ? "600" : "400", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{msg.subject || "(no subject)"}</div>
                       </div>
-                      <div style={{ color: "var(--text-muted)", fontSize: "12px", whiteSpace: "nowrap", marginLeft: "16px", flexShrink: 0 }}>{fmtDate(msg.received_at)}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginLeft: "16px", flexShrink: 0 }}>
+                        {msg.replied_at && <span title={`Replied ${fmtDate(msg.replied_at)}`} style={{ padding: "2px 10px", borderRadius: "99px", fontSize: "12px", fontWeight: "600", background: "var(--badge-paid-bg)", color: "var(--badge-paid-text)", whiteSpace: "nowrap" }}>✓ Replied</span>}
+                        <div style={{ color: "var(--text-muted)", fontSize: "12px", whiteSpace: "nowrap" }}>{fmtDate(msg.received_at)}</div>
+                      </div>
                     </div>
-                    <div style={{ color: "var(--text-muted)", fontSize: "13px", marginBottom: "4px", paddingLeft: !msg.is_read ? "15px" : 0 }}>From: {msg.from_address}</div>
+                    <div style={{ color: "var(--text-muted)", fontSize: "13px", marginBottom: "4px", paddingLeft: !msg.is_read ? "15px" : 0 }}>From: {displayName(msg.from_address)}</div>
                     {preview && <div style={{ color: "var(--text-secondary)", fontSize: "14px", lineHeight: "1.5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingLeft: !msg.is_read ? "15px" : 0 }}>{preview.slice(0, 160)}{preview.length > 160 ? "…" : ""}</div>}
                   </div>
                   <DelButton onClick={(e) => softDeleteInbox(e, msg.id)} title="Move to Trash" />
@@ -576,6 +431,18 @@ export function EmailPage({ members, mwd, ac, setPg, setSelMode, setSel, flash }
               </>
         )}
       </div>
+
+      {openMsg && (
+        <InboxMessageModal
+          msg={openMsg}
+          body={cleanBodyText(openMsg.body_text)}
+          members={members}
+          onClose={() => setOpenMsg(null)}
+          onChanged={updateInboxMsg}
+          onTrash={(id) => softDeleteInbox(null, id)}
+          flash={flash}
+        />
+      )}
 
       {showEM && (
         <EmailModal
